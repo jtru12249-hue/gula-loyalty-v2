@@ -54,7 +54,6 @@ export async function POST(req: Request) {
 
     const result = await adminDb.runTransaction<TransactionResult>(
       async (transaction) => {
-        // Firestore requires reads before writes in transactions.
         const [memberSnap, existingTx] = await Promise.all([
           transaction.get(memberRef),
           transaction.get(txRef),
@@ -125,6 +124,8 @@ export async function POST(req: Request) {
       });
     }
 
+    const logoURL = new URL("/gula-wallet-logo.png", req.url).toString();
+
     let walletSynced = false;
     let replacementPassUrl: string | null = null;
 
@@ -134,15 +135,22 @@ export async function POST(req: Request) {
           memberId: result.memberId,
           name: result.name,
           points: result.newPoints,
+          logoURL,
         });
 
         if (update.ok) {
           walletSynced = true;
+
+          await memberRef.update({
+            walletLogoApplied: update.logoApplied,
+            lastUpdated: FieldValue.serverTimestamp(),
+          });
         } else if (update.missing) {
           const replacement = await createWalletPass({
             memberId: result.memberId,
             name: result.name,
             points: result.newPoints,
+            logoURL,
           });
 
           replacementPassUrl = replacement.shareUrl;
@@ -151,6 +159,7 @@ export async function POST(req: Request) {
             walletSerial: replacement.serialNumber,
             passUrl: replacement.shareUrl,
             googleSaveUrl: replacement.googleSaveUrl,
+            walletLogoApplied: replacement.logoApplied,
             lastUpdated: FieldValue.serverTimestamp(),
           });
 
@@ -161,6 +170,7 @@ export async function POST(req: Request) {
           memberId: result.memberId,
           name: result.name,
           points: result.newPoints,
+          logoURL,
         });
 
         replacementPassUrl = replacement.shareUrl;
@@ -169,14 +179,13 @@ export async function POST(req: Request) {
           walletSerial: replacement.serialNumber,
           passUrl: replacement.shareUrl,
           googleSaveUrl: replacement.googleSaveUrl,
+          walletLogoApplied: replacement.logoApplied,
           lastUpdated: FieldValue.serverTimestamp(),
         });
 
         walletSynced = true;
       }
     } catch (walletError) {
-      // Points are already safely recorded. Do not charge the customer twice
-      // because of a temporary wallet-provider failure.
       console.error("Wallet sync failed", walletError);
     }
 
