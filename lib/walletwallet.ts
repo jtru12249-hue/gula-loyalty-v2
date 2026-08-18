@@ -1,40 +1,30 @@
 import "server-only";
 
-const BASE_URL =
-  "https://api.walletwallet.dev/api";
+const BASE_URL = "https://api.walletwallet.dev/api";
 
 type MemberPassInput = {
   memberId: string;
   name: string;
   points: number;
   logoURL?: string;
+  promoMessage?: string;
 };
 
 class WalletWalletError extends Error {
   status: number;
 
-  constructor(
-    message: string,
-    status: number,
-  ) {
+  constructor(message: string, status: number) {
     super(message);
-
-    this.name =
-      "WalletWalletError";
-
+    this.name = "WalletWalletError";
     this.status = status;
   }
 }
 
 function getApiKey() {
-  const key =
-    process.env
-      .WALLETWALLET_API_KEY;
+  const key = process.env.WALLETWALLET_API_KEY;
 
   if (!key) {
-    throw new Error(
-      "Missing WALLETWALLET_API_KEY",
-    );
+    throw new Error("Missing WALLETWALLET_API_KEY");
   }
 
   return key;
@@ -42,11 +32,8 @@ function getApiKey() {
 
 function headers() {
   return {
-    "Content-Type":
-      "application/json",
-
-    Authorization:
-      `Bearer ${getApiKey()}`,
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${getApiKey()}`,
   };
 }
 
@@ -55,143 +42,116 @@ export function buildMemberPass({
   name,
   points,
   logoURL,
+  promoMessage,
 }: MemberPassInput) {
-  const rewardReady =
-    points >= 1000;
+  const rewardReady = points >= 1000;
 
   return {
-    barcodeValue:
-      memberId,
+    barcodeValue: memberId,
+    barcodeFormat: "QR",
 
-    barcodeFormat:
-      "QR",
+    logoText: "GULA EXPRESS",
+    organizationName: "GULA EXPRESS",
+    description: "GULA EXPRESS Rewards",
 
-    logoText:
-      "GULA EXPRESS",
-
-    organizationName:
-      "GULA EXPRESS",
-
-    description:
-      "GULA EXPRESS Rewards",
-
-    ...(logoURL
-      ? { logoURL }
-      : {}),
+    ...(logoURL ? { logoURL } : {}),
 
     headerFields: [
       {
-        key:
-          "POINTS",
+        key: "POINTS",
+        label: "POINTS",
+        value: String(points),
 
-        label:
-          "POINTS",
-
-        value:
-          String(points),
-
-        changeMessage:
-          "Your GULA balance is now %@ points",
+        changeMessage: promoMessage
+          ? promoMessage
+          : "Your GULA balance is now %@ points",
       },
     ],
 
     primaryFields: [
       {
-        key:
-          "REWARD",
+        key: "REWARD",
 
-        label:
-          rewardReady
-            ? "REWARD READY"
-            : "NEXT REWARD",
+        label: rewardReady
+          ? "REWARD READY"
+          : "NEXT REWARD",
 
-        value:
-          rewardReady
-            ? "FREE REWARD AVAILABLE!"
-            : "FREE REWARD AT 1000 POINTS!",
+        value: rewardReady
+          ? "FREE REWARD AVAILABLE!"
+          : "FREE REWARD AT 1000 POINTS!",
       },
     ],
 
     secondaryFields: [
       {
-        key:
-          "MEMBER",
-
-        label:
-          "MEMBER",
-
-        value:
-          (
-            name ||
-            "GULA Member"
-          ).toUpperCase(),
+        key: "MEMBER",
+        label: "MEMBER",
+        value: (name || "GULA Member").toUpperCase(),
       },
     ],
 
     backFields: [
+      ...(promoMessage
+        ? [
+            {
+              key: "PROMO",
+              label: "TODAY'S GULA OFFER",
+              value: promoMessage,
+            },
+          ]
+        : []),
+
       {
-        key:
-          "MEMBER_ID",
-
-        label:
-          "Member ID",
-
-        value:
-          memberId,
-      },
-
-      {
-        key:
-          "REWARDS",
-
-        label:
-          "Rewards",
-
+        key: "REWARDS",
+        label: "Rewards",
         value:
           "Earn 10 points for every $1 spent at GULA EXPRESS.",
       },
 
       {
-        key:
-          "FREE_REWARD",
-
-        label:
-          "Free Reward",
-
+        key: "FREE_REWARD",
+        label: "Free Reward",
         value:
           "Redeem 1000 points for one free reward at GULA EXPRESS.",
       },
 
       {
-        key:
-          "THANK_YOU",
+        key: "ADDRESS",
+        label: "GULA EXPRESS",
+        value: "24 Grove Ave, Ste 1, Verona, NJ 07044",
+      },
 
-        label:
-          "Thank you",
+      {
+        key: "PHONE",
+        label: "Phone",
+        value: "(908) 880-2567",
+      },
 
+      {
+        key: "MEMBER_ID",
+        label: "Member ID",
+        value: memberId,
+      },
+
+      {
+        key: "THANK_YOU",
+        label: "Thank you",
         value:
           "Thanks for being part of GULA EXPRESS.",
       },
     ],
 
-    sharingProhibited:
-      true,
-
-    colorPreset:
-      "red",
+    sharingProhibited: true,
+    colorPreset: "red",
   };
 }
 
-async function parseWalletError(
-  res: Response,
-) {
+async function parseWalletError(res: Response) {
   try {
-    const data =
-      await res.json();
+    const data = await res.json();
 
     const message =
-      typeof data?.error ===
-      "string"
+      typeof data?.error === "string"
         ? data.error
         : `WalletWallet request failed (${res.status})`;
 
@@ -207,15 +167,8 @@ async function parseWalletError(
   }
 }
 
-function isLogoPlanError(
-  error: unknown,
-) {
-  if (
-    !(
-      error instanceof
-      WalletWalletError
-    )
-  ) {
+function isLogoPlanError(error: unknown) {
+  if (!(error instanceof WalletWalletError)) {
     return false;
   }
 
@@ -235,29 +188,21 @@ async function createPassRequest(
     {
       method: "POST",
 
-      headers:
-        headers(),
+      headers: headers(),
 
-      body:
-        JSON.stringify(
-          buildMemberPass(
-            input,
-          ),
-        ),
+      body: JSON.stringify(
+        buildMemberPass(input),
+      ),
 
-      cache:
-        "no-store",
+      cache: "no-store",
     },
   );
 
   if (!res.ok) {
-    throw await parseWalletError(
-      res,
-    );
+    throw await parseWalletError(res);
   }
 
-  const data =
-    await res.json();
+  const data = await res.json();
 
   if (
     !data.serialNumber ||
@@ -269,19 +214,16 @@ async function createPassRequest(
   }
 
   return {
-    serialNumber:
-      String(
-        data.serialNumber,
-      ),
+    serialNumber: String(
+      data.serialNumber,
+    ),
 
-    shareUrl:
-      String(
-        data.shareUrl,
-      ),
+    shareUrl: String(
+      data.shareUrl,
+    ),
 
     googleSaveUrl:
-      typeof data.googleSaveUrl ===
-      "string"
+      typeof data.googleSaveUrl === "string"
         ? data.googleSaveUrl
         : null,
   };
@@ -292,14 +234,11 @@ export async function createWalletPass(
 ) {
   try {
     return {
-      ...(await createPassRequest(
-        input,
-      )),
+      ...(await createPassRequest(input)),
 
-      logoApplied:
-        Boolean(
-          input.logoURL,
-        ),
+      logoApplied: Boolean(
+        input.logoURL,
+      ),
     };
   } catch (error) {
     if (
@@ -307,8 +246,7 @@ export async function createWalletPass(
       isLogoPlanError(error)
     ) {
       const {
-        logoURL:
-          _logoURL,
+        logoURL: _logoURL,
         ...withoutLogo
       } = input;
 
@@ -317,8 +255,7 @@ export async function createWalletPass(
           withoutLogo,
         )),
 
-        logoApplied:
-          false,
+        logoApplied: false,
       };
     }
 
@@ -335,48 +272,32 @@ async function updatePassRequest(
       walletSerial,
     )}`,
     {
-      method:
-        "PUT",
+      method: "PUT",
 
-      headers:
-        headers(),
+      headers: headers(),
 
-      body:
-        JSON.stringify(
-          buildMemberPass(
-            input,
-          ),
-        ),
+      body: JSON.stringify(
+        buildMemberPass(input),
+      ),
 
-      cache:
-        "no-store",
+      cache: "no-store",
     },
   );
 
-  if (
-    res.status === 404
-  ) {
+  if (res.status === 404) {
     return {
-      ok:
-        false as const,
-
-      missing:
-        true as const,
+      ok: false as const,
+      missing: true as const,
     };
   }
 
   if (!res.ok) {
-    throw await parseWalletError(
-      res,
-    );
+    throw await parseWalletError(res);
   }
 
   return {
-    ok:
-      true as const,
-
-    missing:
-      false as const,
+    ok: true as const,
+    missing: false as const,
   };
 }
 
@@ -391,10 +312,9 @@ export async function updateWalletPass(
         input,
       )),
 
-      logoApplied:
-        Boolean(
-          input.logoURL,
-        ),
+      logoApplied: Boolean(
+        input.logoURL,
+      ),
     };
   } catch (error) {
     if (
@@ -402,8 +322,7 @@ export async function updateWalletPass(
       isLogoPlanError(error)
     ) {
       const {
-        logoURL:
-          _logoURL,
+        logoURL: _logoURL,
         ...withoutLogo
       } = input;
 
@@ -413,8 +332,7 @@ export async function updateWalletPass(
           withoutLogo,
         )),
 
-        logoApplied:
-          false,
+        logoApplied: false,
       };
     }
 
