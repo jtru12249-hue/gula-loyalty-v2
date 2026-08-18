@@ -42,16 +42,21 @@ export async function POST(req: Request) {
 
     const memberId = memberRef.id;
 
+    // Use the current deployed website as the public host for the logo.
+    const logoURL = new URL("/gula-wallet-logo.png", req.url).toString();
+
     const wallet = await createWalletPass({
       memberId,
       name,
       points: 0,
+      logoURL,
     });
 
     await memberRef.update({
       walletSerial: wallet.serialNumber,
       passUrl: wallet.shareUrl,
       googleSaveUrl: wallet.googleSaveUrl,
+      walletLogoApplied: wallet.logoApplied,
       lastUpdated: FieldValue.serverTimestamp(),
     });
 
@@ -59,9 +64,9 @@ export async function POST(req: Request) {
       success: true,
       memberId,
       passUrl: wallet.shareUrl,
+      walletLogoApplied: wallet.logoApplied,
     });
   } catch (error: unknown) {
-    // Avoid leaving a half-created member when pass creation fails.
     if (memberRef) {
       await memberRef.delete().catch(() => undefined);
     }
