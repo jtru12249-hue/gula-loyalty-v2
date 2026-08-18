@@ -110,7 +110,7 @@ export default function StaffTerminalPage() {
             <div className="flex items-center gap-4">
               <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg shadow-red-950/30">
                 <img
-                  src="/gula-logo.png"
+                  src="/gula-wallet-logo.png"
                   alt="GULA EXPRESS logo"
                   width="80"
                   height="80"
