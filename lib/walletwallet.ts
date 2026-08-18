@@ -6,7 +6,18 @@ type MemberPassInput = {
   memberId: string;
   name: string;
   points: number;
+  logoURL?: string;
 };
+
+class WalletWalletError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "WalletWalletError";
+    this.status = status;
+  }
+}
 
 function getApiKey() {
   const key = process.env.WALLETWALLET_API_KEY;
@@ -25,18 +36,26 @@ export function buildMemberPass({
   memberId,
   name,
   points,
+  logoURL,
 }: MemberPassInput) {
   return {
     barcodeValue: memberId,
     barcodeFormat: "QR",
     logoText: "GULA EXPRESS",
     organizationName: "GULA EXPRESS",
-    description: "GULA EXPRESS Loyalty Pass",
-    primaryFields: [
+    description: "GULA EXPRESS Rewards",
+    ...(logoURL ? { logoURL } : {}),
+    headerFields: [
       {
         label: "POINTS",
         value: String(points),
-        changeMessage: "You now have %@ points",
+        changeMessage: "Your GULA balance is now %@ points",
+      },
+    ],
+    primaryFields: [
+      {
+        label: "",
+        value: "GULA REWARDS",
       },
     ],
     secondaryFields: [
@@ -50,24 +69,47 @@ export function buildMemberPass({
         label: "Member ID",
         value: memberId,
       },
+      {
+        label: "Rewards",
+        value: "Earn 10 points for every $1 spent at GULA EXPRESS.",
+      },
+      {
+        label: "Thank you",
+        value: "Thanks for being part of GULA EXPRESS.",
+      },
     ],
     sharingProhibited: true,
     colorPreset: "red",
   };
 }
 
-async function readWalletError(res: Response) {
+async function parseWalletError(res: Response) {
   try {
     const data = await res.json();
-    return typeof data?.error === "string"
-      ? data.error
-      : `WalletWallet request failed (${res.status})`;
+    const message =
+      typeof data?.error === "string"
+        ? data.error
+        : `WalletWallet request failed (${res.status})`;
+
+    return new WalletWalletError(message, res.status);
   } catch {
-    return `WalletWallet request failed (${res.status})`;
+    return new WalletWalletError(
+      `WalletWallet request failed (${res.status})`,
+      res.status,
+    );
   }
 }
 
-export async function createWalletPass(input: MemberPassInput) {
+function isLogoPlanError(error: unknown) {
+  if (!(error instanceof WalletWalletError)) return false;
+
+  return (
+    error.status === 400 &&
+    /logo|image|pro|plan|feature/i.test(error.message)
+  );
+}
+
+async function createPassRequest(input: MemberPassInput) {
   const res = await fetch(`${BASE_URL}/passes`, {
     method: "POST",
     headers: headers(),
@@ -75,9 +117,7 @@ export async function createWalletPass(input: MemberPassInput) {
     cache: "no-store",
   });
 
-  if (!res.ok) {
-    throw new Error(await readWalletError(res));
-  }
+  if (!res.ok) throw await parseWalletError(res);
 
   const data = await res.json();
 
@@ -93,7 +133,28 @@ export async function createWalletPass(input: MemberPassInput) {
   };
 }
 
-export async function updateWalletPass(
+export async function createWalletPass(input: MemberPassInput) {
+  try {
+    return {
+      ...(await createPassRequest(input)),
+      logoApplied: Boolean(input.logoURL),
+    };
+  } catch (error) {
+    // WalletWallet custom logos are plan-dependent. Keep registration working
+    // even if the account cannot use the logo feature.
+    if (input.logoURL && isLogoPlanError(error)) {
+      const { logoURL: _logoURL, ...withoutLogo } = input;
+      return {
+        ...(await createPassRequest(withoutLogo)),
+        logoApplied: false,
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function updatePassRequest(
   walletSerial: string,
   input: MemberPassInput,
 ) {
@@ -111,9 +172,29 @@ export async function updateWalletPass(
     return { ok: false as const, missing: true as const };
   }
 
-  if (!res.ok) {
-    throw new Error(await readWalletError(res));
-  }
+  if (!res.ok) throw await parseWalletError(res);
 
   return { ok: true as const, missing: false as const };
+}
+
+export async function updateWalletPass(
+  walletSerial: string,
+  input: MemberPassInput,
+) {
+  try {
+    return {
+      ...(await updatePassRequest(walletSerial, input)),
+      logoApplied: Boolean(input.logoURL),
+    };
+  } catch (error) {
+    if (input.logoURL && isLogoPlanError(error)) {
+      const { logoURL: _logoURL, ...withoutLogo } = input;
+      return {
+        ...(await updatePassRequest(walletSerial, withoutLogo)),
+        logoApplied: false,
+      };
+    }
+
+    throw error;
+  }
 }
