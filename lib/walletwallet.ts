@@ -1,6 +1,7 @@
 import "server-only";
 
-const BASE_URL = "https://api.walletwallet.dev/api";
+const BASE_URL =
+  "https://api.walletwallet.dev/api";
 
 type MemberPassInput = {
   memberId: string;
@@ -12,18 +13,28 @@ type MemberPassInput = {
 class WalletWalletError extends Error {
   status: number;
 
-  constructor(message: string, status: number) {
+  constructor(
+    message: string,
+    status: number,
+  ) {
     super(message);
-    this.name = "WalletWalletError";
+
+    this.name =
+      "WalletWalletError";
+
     this.status = status;
   }
 }
 
 function getApiKey() {
-  const key = process.env.WALLETWALLET_API_KEY;
+  const key =
+    process.env
+      .WALLETWALLET_API_KEY;
 
   if (!key) {
-    throw new Error("Missing WALLETWALLET_API_KEY");
+    throw new Error(
+      "Missing WALLETWALLET_API_KEY",
+    );
   }
 
   return key;
@@ -31,8 +42,11 @@ function getApiKey() {
 
 function headers() {
   return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${getApiKey()}`,
+    "Content-Type":
+      "application/json",
+
+    Authorization:
+      `Bearer ${getApiKey()}`,
   };
 }
 
@@ -42,79 +56,149 @@ export function buildMemberPass({
   points,
   logoURL,
 }: MemberPassInput) {
+  const rewardReady =
+    points >= 1000;
+
   return {
-    barcodeValue: memberId,
-    barcodeFormat: "QR",
+    barcodeValue:
+      memberId,
 
-    logoText: "GULA EXPRESS",
-    organizationName: "GULA EXPRESS",
-    description: "GULA EXPRESS Rewards",
+    barcodeFormat:
+      "QR",
 
-    ...(logoURL ? { logoURL } : {}),
+    logoText:
+      "GULA EXPRESS",
+
+    organizationName:
+      "GULA EXPRESS",
+
+    description:
+      "GULA EXPRESS Rewards",
+
+    ...(logoURL
+      ? { logoURL }
+      : {}),
 
     headerFields: [
       {
-        key: "POINTS",
-        label: "POINTS",
-        value: String(points),
-        changeMessage: "Your GULA balance is now %@ points",
+        key:
+          "POINTS",
+
+        label:
+          "POINTS",
+
+        value:
+          String(points),
+
+        changeMessage:
+          "Your GULA balance is now %@ points",
       },
     ],
 
     primaryFields: [
       {
-        key: "REWARD",
-        label: "NEXT REWARD",
-        value: "FREE REWARD AT 1000 POINTS!",
+        key:
+          "REWARD",
+
+        label:
+          rewardReady
+            ? "REWARD READY"
+            : "NEXT REWARD",
+
+        value:
+          rewardReady
+            ? "FREE REWARD AVAILABLE!"
+            : "FREE REWARD AT 1000 POINTS!",
       },
     ],
 
     secondaryFields: [
       {
-        key: "MEMBER",
-        label: "MEMBER",
-        value: (name || "GULA Member").toUpperCase(),
+        key:
+          "MEMBER",
+
+        label:
+          "MEMBER",
+
+        value:
+          (
+            name ||
+            "GULA Member"
+          ).toUpperCase(),
       },
     ],
 
     backFields: [
       {
-        key: "MEMBER_ID",
-        label: "Member ID",
-        value: memberId,
+        key:
+          "MEMBER_ID",
+
+        label:
+          "Member ID",
+
+        value:
+          memberId,
       },
+
       {
-        key: "REWARD_INFO",
-        label: "Rewards",
-        value: "Earn 10 points for every $1 spent at GULA EXPRESS.",
+        key:
+          "REWARDS",
+
+        label:
+          "Rewards",
+
+        value:
+          "Earn 10 points for every $1 spent at GULA EXPRESS.",
       },
+
       {
-        key: "FREE_REWARD_INFO",
-        label: "Free Reward",
-        value: "FREE REWARD AT 1000 POINTS!",
+        key:
+          "FREE_REWARD",
+
+        label:
+          "Free Reward",
+
+        value:
+          "Redeem 1000 points for one free reward at GULA EXPRESS.",
       },
+
       {
-        key: "THANK_YOU",
-        label: "Thank you",
-        value: "Thanks for being part of GULA EXPRESS.",
+        key:
+          "THANK_YOU",
+
+        label:
+          "Thank you",
+
+        value:
+          "Thanks for being part of GULA EXPRESS.",
       },
     ],
 
-    sharingProhibited: true,
-    colorPreset: "red",
+    sharingProhibited:
+      true,
+
+    colorPreset:
+      "red",
   };
 }
 
-async function parseWalletError(res: Response) {
+async function parseWalletError(
+  res: Response,
+) {
   try {
-    const data = await res.json();
+    const data =
+      await res.json();
 
     const message =
-      typeof data?.error === "string"
+      typeof data?.error ===
+      "string"
         ? data.error
         : `WalletWallet request failed (${res.status})`;
 
-    return new WalletWalletError(message, res.status);
+    return new WalletWalletError(
+      message,
+      res.status,
+    );
   } catch {
     return new WalletWalletError(
       `WalletWallet request failed (${res.status})`,
@@ -123,42 +207,81 @@ async function parseWalletError(res: Response) {
   }
 }
 
-function isLogoPlanError(error: unknown) {
-  if (!(error instanceof WalletWalletError)) {
+function isLogoPlanError(
+  error: unknown,
+) {
+  if (
+    !(
+      error instanceof
+      WalletWalletError
+    )
+  ) {
     return false;
   }
 
   return (
     error.status === 400 &&
-    /logo|image|pro|plan|feature/i.test(error.message)
+    /logo|image|pro|plan|feature/i.test(
+      error.message,
+    )
   );
 }
 
-async function createPassRequest(input: MemberPassInput) {
-  const res = await fetch(`${BASE_URL}/passes`, {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify(buildMemberPass(input)),
-    cache: "no-store",
-  });
+async function createPassRequest(
+  input: MemberPassInput,
+) {
+  const res = await fetch(
+    `${BASE_URL}/passes`,
+    {
+      method: "POST",
+
+      headers:
+        headers(),
+
+      body:
+        JSON.stringify(
+          buildMemberPass(
+            input,
+          ),
+        ),
+
+      cache:
+        "no-store",
+    },
+  );
 
   if (!res.ok) {
-    throw await parseWalletError(res);
+    throw await parseWalletError(
+      res,
+    );
   }
 
-  const data = await res.json();
+  const data =
+    await res.json();
 
-  if (!data.serialNumber || !data.shareUrl) {
+  if (
+    !data.serialNumber ||
+    !data.shareUrl
+  ) {
     throw new Error(
       "WalletWallet returned an incomplete pass response.",
     );
   }
 
   return {
-    serialNumber: String(data.serialNumber),
-    shareUrl: String(data.shareUrl),
+    serialNumber:
+      String(
+        data.serialNumber,
+      ),
+
+    shareUrl:
+      String(
+        data.shareUrl,
+      ),
+
     googleSaveUrl:
-      typeof data.googleSaveUrl === "string"
+      typeof data.googleSaveUrl ===
+      "string"
         ? data.googleSaveUrl
         : null,
   };
@@ -169,16 +292,33 @@ export async function createWalletPass(
 ) {
   try {
     return {
-      ...(await createPassRequest(input)),
-      logoApplied: Boolean(input.logoURL),
+      ...(await createPassRequest(
+        input,
+      )),
+
+      logoApplied:
+        Boolean(
+          input.logoURL,
+        ),
     };
   } catch (error) {
-    if (input.logoURL && isLogoPlanError(error)) {
-      const { logoURL: _logoURL, ...withoutLogo } = input;
+    if (
+      input.logoURL &&
+      isLogoPlanError(error)
+    ) {
+      const {
+        logoURL:
+          _logoURL,
+        ...withoutLogo
+      } = input;
 
       return {
-        ...(await createPassRequest(withoutLogo)),
-        logoApplied: false,
+        ...(await createPassRequest(
+          withoutLogo,
+        )),
+
+        logoApplied:
+          false,
       };
     }
 
@@ -191,29 +331,52 @@ async function updatePassRequest(
   input: MemberPassInput,
 ) {
   const res = await fetch(
-    `${BASE_URL}/passes/${encodeURIComponent(walletSerial)}`,
+    `${BASE_URL}/passes/${encodeURIComponent(
+      walletSerial,
+    )}`,
     {
-      method: "PUT",
-      headers: headers(),
-      body: JSON.stringify(buildMemberPass(input)),
-      cache: "no-store",
+      method:
+        "PUT",
+
+      headers:
+        headers(),
+
+      body:
+        JSON.stringify(
+          buildMemberPass(
+            input,
+          ),
+        ),
+
+      cache:
+        "no-store",
     },
   );
 
-  if (res.status === 404) {
+  if (
+    res.status === 404
+  ) {
     return {
-      ok: false as const,
-      missing: true as const,
+      ok:
+        false as const,
+
+      missing:
+        true as const,
     };
   }
 
   if (!res.ok) {
-    throw await parseWalletError(res);
+    throw await parseWalletError(
+      res,
+    );
   }
 
   return {
-    ok: true as const,
-    missing: false as const,
+    ok:
+      true as const,
+
+    missing:
+      false as const,
   };
 }
 
@@ -223,19 +386,35 @@ export async function updateWalletPass(
 ) {
   try {
     return {
-      ...(await updatePassRequest(walletSerial, input)),
-      logoApplied: Boolean(input.logoURL),
+      ...(await updatePassRequest(
+        walletSerial,
+        input,
+      )),
+
+      logoApplied:
+        Boolean(
+          input.logoURL,
+        ),
     };
   } catch (error) {
-    if (input.logoURL && isLogoPlanError(error)) {
-      const { logoURL: _logoURL, ...withoutLogo } = input;
+    if (
+      input.logoURL &&
+      isLogoPlanError(error)
+    ) {
+      const {
+        logoURL:
+          _logoURL,
+        ...withoutLogo
+      } = input;
 
       return {
         ...(await updatePassRequest(
           walletSerial,
           withoutLogo,
         )),
-        logoApplied: false,
+
+        logoApplied:
+          false,
       };
     }
 
