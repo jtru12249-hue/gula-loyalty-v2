@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { FormEvent, useState } from "react";
 import QrScanner from "@/components/qr-scanner";
 
@@ -12,7 +11,6 @@ type AddPointsResponse = {
   pointsEarned?: number;
   newPoints?: number;
   walletSynced?: boolean;
-  replacementPassUrl?: string | null;
 };
 
 export default function StaffTerminalPage() {
@@ -47,7 +45,10 @@ export default function StaffTerminalPage() {
     }
 
     setWorking(true);
-    setStatus({ type: "idle", text: "Adding points and syncing the pass…" });
+    setStatus({
+      type: "idle",
+      text: "Adding points and syncing the customer pass…",
+    });
 
     try {
       const res = await fetch("/api/add-points", {
@@ -69,13 +70,13 @@ export default function StaffTerminalPage() {
         throw new Error(data.error || "Unable to add points.");
       }
 
-      const syncNote = data.walletSynced
-        ? " The Wallet pass was synced."
-        : " Points were saved, but the Wallet pass could not sync right now.";
+      const syncText = data.walletSynced
+        ? " Wallet updated successfully."
+        : " Points were saved, but Wallet sync is temporarily unavailable.";
 
       setStatus({
         type: "success",
-        text: `${data.memberName ?? "Member"} earned ${data.pointsEarned ?? 0} points. New balance: ${data.newPoints ?? 0}.${syncNote}`,
+        text: `${data.memberName ?? "Member"} earned ${data.pointsEarned ?? 0} points. New balance: ${data.newPoints ?? 0}.${syncText}`,
       });
 
       setSpendAmount("");
@@ -96,48 +97,62 @@ export default function StaffTerminalPage() {
     event.preventDefault();
   }
 
+  const expectedPoints =
+    Number(spendAmount) > 0
+      ? Math.floor(Math.round(Number(spendAmount) * 100) / 10)
+      : 0;
+
   return (
     <main className="min-h-screen bg-black text-white">
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
-        <header className="mb-6 flex flex-col gap-5 rounded-[2rem] border border-white/10 bg-neutral-950/80 p-5 backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:p-6">
-          <div className="flex items-center gap-4">
-            <div className="rounded-2xl bg-white p-1.5">
-              <Image
-                src="/gula-logo.png"
-                alt="GULA logo"
-                width={68}
-                height={68}
-                priority
-                className="h-16 w-16 rounded-xl object-cover"
-              />
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+        <header className="mb-6 overflow-hidden rounded-[2rem] border border-white/10 bg-neutral-950">
+          <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <div className="flex items-center gap-4">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg shadow-red-950/30">
+                <img
+                  src="/gula-logo.png"
+                  alt="GULA EXPRESS logo"
+                  width="80"
+                  height="80"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.32em] text-red-500">
+                  GULA EXPRESS
+                </p>
+                <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">
+                  Staff Loyalty Terminal
+                </h1>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Fast checkout. Instant rewards.
+                </p>
+              </div>
             </div>
 
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.32em] text-red-500">
-                GULA EXPRESS
-              </p>
-              <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">
-                Staff Loyalty Terminal
-              </h1>
-            </div>
+            <a
+              href="/join"
+              className="rounded-full border border-white/15 px-5 py-2.5 text-center text-sm font-bold text-neutral-200 transition hover:border-red-500/50 hover:bg-red-500/10"
+            >
+              Customer Join Page
+            </a>
           </div>
 
-          <a
-            href="/join"
-            className="rounded-full border border-white/15 px-5 py-2.5 text-center text-sm font-bold text-neutral-200 transition hover:border-red-500/50 hover:bg-red-500/10"
-          >
-            Customer Join Page
-          </a>
+          <div className="h-1 w-full bg-gradient-to-r from-red-700 via-red-500 to-orange-500" />
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+        <div className="grid gap-6 lg:grid-cols-[0.82fr_1.18fr]">
           <section className="rounded-[2rem] border border-white/10 bg-neutral-950 p-5 sm:p-6">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-neutral-600">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-red-500">
               Step 1
             </p>
             <h2 className="mt-2 text-xl font-black">Enter sale details</h2>
+            <p className="mt-1 text-sm text-neutral-500">
+              Add the order amount before scanning.
+            </p>
 
-            <form onSubmit={onSubmit} className="mt-5 space-y-5">
+            <form onSubmit={onSubmit} className="mt-6 space-y-5">
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-neutral-300">
                   Order total
@@ -156,9 +171,6 @@ export default function StaffTerminalPage() {
                     className="w-full bg-transparent px-2 py-4 text-2xl font-black outline-none placeholder:text-neutral-700"
                   />
                 </div>
-                <p className="mt-2 text-xs text-neutral-600">
-                  Customer earns 10 points per $1.
-                </p>
               </label>
 
               <label className="block">
@@ -167,7 +179,6 @@ export default function StaffTerminalPage() {
                 </span>
                 <input
                   type="password"
-                  autoComplete="current-password"
                   value={staffPin}
                   onChange={(event) => setStaffPin(event.target.value)}
                   placeholder="Enter staff PIN"
@@ -176,27 +187,31 @@ export default function StaffTerminalPage() {
               </label>
             </form>
 
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-neutral-600">
+            <div className="mt-6 rounded-2xl border border-red-500/15 bg-red-500/[0.05] p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-neutral-500">
                 Expected points
               </p>
-              <p className="mt-2 text-3xl font-black">
-                {Number(spendAmount) > 0
-                  ? Math.floor(Math.round(Number(spendAmount) * 100) / 10)
-                  : 0}
+              <div className="mt-2 flex items-end gap-2">
+                <p className="text-4xl font-black">{expectedPoints}</p>
+                <span className="pb-1 text-sm font-semibold text-neutral-500">
+                  pts
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-neutral-600">
+                $1 spent = 10 points
               </p>
             </div>
           </section>
 
           <section className="rounded-[2rem] border border-white/10 bg-neutral-950 p-5 shadow-2xl shadow-red-950/20 sm:p-6">
             <div className="mb-5">
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-neutral-600">
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-red-500">
                 Step 2
               </p>
               <h2 className="mt-2 text-xl font-black">Scan member QR</h2>
               <p className="mt-1 text-sm leading-6 text-neutral-500">
-                Use the live camera or upload a screenshot from the customer's
-                Wallet pass.
+                Scan the QR from Apple Wallet, Google Wallet, or an uploaded
+                screenshot.
               </p>
             </div>
 
