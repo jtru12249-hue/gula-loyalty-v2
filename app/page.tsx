@@ -27,24 +27,12 @@ type ActionResponse = {
   walletSynced?: boolean;
 };
 
-type NotificationResponse = {
-  success?: boolean;
-  error?: string;
-  message?: string;
-  totalMembers?: number;
-  successful?: number;
-  failed?: number;
-};
-
 export default function StaffTerminalPage() {
   const [staffPin, setStaffPin] = useState("");
   const [spendAmount, setSpendAmount] = useState("");
   const [member, setMember] = useState<Member | null>(null);
   const [loadingMember, setLoadingMember] = useState(false);
   const [working, setWorking] = useState(false);
-
-  const [promoMessage, setPromoMessage] = useState("");
-  const [sendingPromo, setSendingPromo] = useState(false);
 
   const [status, setStatus] = useState<{
     type: "idle" | "success" | "error";
@@ -121,7 +109,9 @@ export default function StaffTerminalPage() {
   }
 
   async function addPoints() {
-    if (!member) return;
+    if (!member) {
+      return;
+    }
 
     if (!Number.isFinite(amount) || amount <= 0) {
       setStatus({
@@ -176,7 +166,9 @@ export default function StaffTerminalPage() {
 
       setStatus({
         type: "success",
-        text: `${data.pointsEarned ?? expectedPoints} points added. ${member.name} now has ${newPoints} points.${
+        text: `${data.pointsEarned ?? expectedPoints} points added. ${
+          member.name
+        } now has ${newPoints} points.${
           data.walletSynced ? " Wallet updated." : ""
         }`,
       });
@@ -194,13 +186,19 @@ export default function StaffTerminalPage() {
   }
 
   async function redeemReward() {
-    if (!member || member.points < 1000) return;
+    if (!member || member.points < 1000) {
+      return;
+    }
 
     const confirmed = window.confirm(
-      `Redeem 1000 points from ${member.name}?\n\nCurrent balance: ${member.points}\nNew balance: ${member.points - 1000}`,
+      `Redeem 1000 points from ${member.name}?\n\nCurrent balance: ${
+        member.points
+      }\nNew balance: ${member.points - 1000}`,
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     setWorking(true);
 
@@ -245,7 +243,9 @@ export default function StaffTerminalPage() {
 
       setStatus({
         type: "success",
-        text: `FREE REWARD REDEEMED! 1000 points deducted. ${member.name} now has ${newPoints} points.${
+        text: `FREE REWARD REDEEMED! 1000 points deducted. ${
+          member.name
+        } now has ${newPoints} points.${
           data.walletSynced ? " Wallet updated." : ""
         }`,
       });
@@ -259,83 +259,6 @@ export default function StaffTerminalPage() {
       });
     } finally {
       setWorking(false);
-    }
-  }
-
-  async function sendPromoNotification() {
-    const message = promoMessage.trim();
-
-    if (!message) {
-      setStatus({
-        type: "error",
-        text: "Enter a promotional message first.",
-      });
-
-      return;
-    }
-
-    if (!staffPin.trim()) {
-      setStatus({
-        type: "error",
-        text: "Enter the staff PIN before sending a notification.",
-      });
-
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Send this notification to ALL GULA Wallet members?\n\n"${message}"`,
-    );
-
-    if (!confirmed) return;
-
-    setSendingPromo(true);
-
-    setStatus({
-      type: "idle",
-      text: "Sending promotion to GULA Wallet members...",
-    });
-
-    try {
-      const res = await fetch("/api/send-notification", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-staff-pin": staffPin,
-        },
-        body: JSON.stringify({
-          message,
-        }),
-      });
-
-      const data = (await res.json()) as NotificationResponse;
-
-      if (!res.ok || !data.success) {
-        throw new Error(
-          data.error || "Unable to send promotion.",
-        );
-      }
-
-      setStatus({
-        type: "success",
-        text: `Promotion sent. ${data.successful ?? 0} Wallet passes updated.${
-          data.failed
-            ? ` ${data.failed} failed.`
-            : ""
-        }`,
-      });
-
-      setPromoMessage("");
-    } catch (error) {
-      setStatus({
-        type: "error",
-        text:
-          error instanceof Error
-            ? error.message
-            : "Unable to send promotion.",
-      });
-    } finally {
-      setSendingPromo(false);
     }
   }
 
@@ -484,7 +407,7 @@ export default function StaffTerminalPage() {
               Scan Member
             </h2>
 
-            <p className="mt-2 mb-5 text-sm leading-6 text-neutral-500">
+            <p className="mb-5 mt-2 text-sm leading-6 text-neutral-500">
               Scanning only identifies the customer. It does
               not add points automatically.
             </p>
@@ -631,65 +554,6 @@ export default function StaffTerminalPage() {
             )}
           </section>
         </div>
-
-        <section className="mt-6 overflow-hidden rounded-[2rem] border border-white/10 bg-neutral-950">
-          <div className="border-b border-white/10 bg-gradient-to-r from-red-950/40 to-orange-950/20 p-6">
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-red-500">
-              GULA MARKETING
-            </p>
-
-            <h2 className="mt-2 text-2xl font-black">
-              Send Wallet Notification
-            </h2>
-
-            <p className="mt-2 text-sm text-neutral-500">
-              Send a promotion to customers with a GULA Wallet pass.
-            </p>
-          </div>
-
-          <div className="p-6">
-            <label className="block">
-              <span className="mb-2 block text-sm font-bold text-neutral-300">
-                Notification Message
-              </span>
-
-              <textarea
-                value={promoMessage}
-                maxLength={120}
-                onChange={(event) =>
-                  setPromoMessage(event.target.value)
-                }
-                placeholder="20% DISCOUNT ON GULA! ONLY FOR TODAY 🔥"
-                rows={3}
-                className="w-full resize-none rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-base font-semibold outline-none placeholder:text-neutral-700 focus:border-red-500"
-              />
-
-              <div className="mt-2 flex justify-between text-xs text-neutral-600">
-                <span>
-                  This will update all GULA Wallet members
-                </span>
-
-                <span>
-                  {promoMessage.length}/120
-                </span>
-              </div>
-            </label>
-
-            <button
-              type="button"
-              onClick={sendPromoNotification}
-              disabled={
-                sendingPromo ||
-                !promoMessage.trim()
-              }
-              className="mt-5 w-full rounded-2xl bg-gradient-to-r from-red-600 to-orange-600 px-5 py-4 text-base font-black text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              {sendingPromo
-                ? "SENDING TO MEMBERS..."
-                : "🔔 SEND PROMO TO ALL MEMBERS"}
-            </button>
-          </div>
-        </section>
 
         <div
           className={
