@@ -1,13 +1,21 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GULA EXPRESS Rewards",
-  description: "GULA EXPRESS loyalty rewards",
+  title: {
+    default: "GULA EXPRESS Rewards",
+    template: "%s | GULA EXPRESS",
+  },
+  description:
+    "Join GULA EXPRESS Rewards, earn points, and keep your loyalty pass in Apple Wallet or Google Wallet.",
   applicationName: "GULA EXPRESS Rewards",
+  icons: {
+    icon: "/gula-wallet-logo.png",
+    apple: "/gula-wallet-logo.png",
+  },
 };
 
-export const viewport = {
+export const viewport: Viewport = {
   themeColor: "#000000",
   colorScheme: "dark",
 };
