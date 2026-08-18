@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // This upgraded app performs all Firestore access through firebase-admin
+    // in server-side Next.js route handlers. Client-side direct access is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
