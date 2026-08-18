@@ -59,7 +59,7 @@ export default function JoinPage() {
               <div className="flex items-center gap-5">
                 <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-[2rem] bg-white p-2 shadow-2xl shadow-red-950/50 sm:h-32 sm:w-32">
                   <img
-                    src="/gula-logo.png"
+                    src="/gula-wallet-logo.png"
                     alt="GULA EXPRESS logo"
                     width="128"
                     height="128"
@@ -185,7 +185,7 @@ export default function JoinPage() {
               <div className="flex h-full flex-col justify-center">
                 <div className="mx-auto flex h-36 w-36 items-center justify-center overflow-hidden rounded-[2rem] bg-white p-2 shadow-2xl shadow-red-950/50">
                   <img
-                    src="/gula-logo.png"
+                    src="/gula-wallet-logo.png"
                     alt="GULA EXPRESS logo"
                     width="144"
                     height="144"
