@@ -7,7 +7,6 @@ type MemberPassInput = {
   name: string;
   points: number;
   logoURL?: string;
-  promoMessage?: string;
 };
 
 class WalletWalletError extends Error {
@@ -42,7 +41,6 @@ export function buildMemberPass({
   name,
   points,
   logoURL,
-  promoMessage,
 }: MemberPassInput) {
   const rewardReady = points >= 1000;
 
@@ -61,17 +59,13 @@ export function buildMemberPass({
         key: "POINTS",
         label: "POINTS",
         value: String(points),
-
-        changeMessage: promoMessage
-          ? promoMessage
-          : "Your GULA balance is now %@ points",
+        changeMessage: "Your GULA balance is now %@ points",
       },
     ],
 
     primaryFields: [
       {
         key: "REWARD",
-
         label: rewardReady
           ? "REWARD READY"
           : "NEXT REWARD",
@@ -91,16 +85,6 @@ export function buildMemberPass({
     ],
 
     backFields: [
-      ...(promoMessage
-        ? [
-            {
-              key: "PROMO",
-              label: "TODAY'S GULA OFFER",
-              value: promoMessage,
-            },
-          ]
-        : []),
-
       {
         key: "REWARDS",
         label: "Rewards",
@@ -118,7 +102,8 @@ export function buildMemberPass({
       {
         key: "ADDRESS",
         label: "GULA EXPRESS",
-        value: "24 Grove Ave, Ste 1, Verona, NJ 07044",
+        value:
+          "24 Grove Ave, Ste 1, Verona, NJ 07044",
       },
 
       {
@@ -235,10 +220,7 @@ export async function createWalletPass(
   try {
     return {
       ...(await createPassRequest(input)),
-
-      logoApplied: Boolean(
-        input.logoURL,
-      ),
+      logoApplied: Boolean(input.logoURL),
     };
   } catch (error) {
     if (
