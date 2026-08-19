@@ -9,6 +9,10 @@ type JoinResponse = {
   error?: string;
   memberId?: string;
   passUrl?: string;
+
+  existingMember?: boolean;
+  name?: string;
+  points?: number;
 };
 
 const translations = {
@@ -38,8 +42,7 @@ const translations = {
 
     formTitle: "Create your loyalty pass.",
 
-    formSubtitle:
-      "It takes less than a minute.",
+    formSubtitle: "It takes less than a minute.",
 
     name: "Name",
     namePlaceholder: "Your name",
@@ -47,41 +50,39 @@ const translations = {
     email: "Email",
     emailPlaceholder: "you@example.com",
 
-    submit:
-      "Create My GULA Pass",
+    submit: "Create My GULA Pass",
 
-    submitting:
-      "Creating your pass...",
+    submitting: "Checking your membership...",
 
-    rewardsRate:
-      "Rewards Rate",
+    rewardsRate: "Rewards Rate",
 
-    rewardsValue:
-      "$1 = 10 points",
+    rewardsValue: "$1 = 10 points",
 
-    readyTitle:
-      "Your GULA Rewards pass is ready.",
+    readyTitle: "Your GULA Rewards pass is ready.",
 
     readyDescription:
       "Add it to your phone and show the QR code every time you order.",
 
-    addWallet:
-      "Add to Apple / Google Wallet",
+    welcomeBackTitle: "Welcome back to GULA Rewards!",
 
-    startingBalance:
-      "Starting Balance",
+    welcomeBackDescription:
+      "We found your existing membership. No duplicate account was created.",
 
-    points:
-      "0 points",
+    addWallet: "Add to Apple / Google Wallet",
 
-    another:
-      "Create Another Membership",
+    existingWallet: "Open My Existing Wallet Pass",
 
-    staff:
-      "Staff Terminal",
+    startingBalance: "Starting Balance",
 
-    genericError:
-      "Something went wrong. Please try again.",
+    currentBalance: "Current Balance",
+
+    pointsWord: "points",
+
+    another: "Use Another Email",
+
+    staff: "Staff Terminal",
+
+    genericError: "Something went wrong. Please try again.",
   },
 
   es: {
@@ -89,34 +90,28 @@ const translations = {
 
     brandSubtitle: "Come. Gana. Repite.",
 
-    heroTitle:
-      "Tu próxima recompensa comienza aquí.",
+    heroTitle: "Tu próxima recompensa comienza aquí.",
 
     heroDescription:
       "Únete a GULA Rewards, guarda tu pase digital en Apple Wallet o Google Wallet y gana puntos cada vez que hagas una compra.",
 
     step1Label: "PASO 1",
     step1Title: "Regístrate",
-    step1Text:
-      "Crea gratis tu membresía de GULA Rewards.",
+    step1Text: "Crea gratis tu membresía de GULA Rewards.",
 
     step2Label: "PASO 2",
     step2Title: "Escanea",
-    step2Text:
-      "Muestra el código QR de tu Wallet al pagar.",
+    step2Text: "Muestra el código QR de tu Wallet al pagar.",
 
     step3Label: "PASO 3",
     step3Title: "Gana puntos",
-    step3Text:
-      "Recibe 10 puntos por cada $1 que gastes.",
+    step3Text: "Recibe 10 puntos por cada $1 que gastes.",
 
     rewardsLabel: "GULA REWARDS",
 
-    formTitle:
-      "Crea tu pase de lealtad.",
+    formTitle: "Crea tu pase de lealtad.",
 
-    formSubtitle:
-      "Toma menos de un minuto.",
+    formSubtitle: "Toma menos de un minuto.",
 
     name: "Nombre",
     namePlaceholder: "Tu nombre",
@@ -124,72 +119,58 @@ const translations = {
     email: "Correo electrónico",
     emailPlaceholder: "tu@email.com",
 
-    submit:
-      "Crear Mi Pase GULA",
+    submit: "Crear Mi Pase GULA",
 
-    submitting:
-      "Creando tu pase...",
+    submitting: "Buscando tu membresía...",
 
-    rewardsRate:
-      "Puntos",
+    rewardsRate: "Puntos",
 
-    rewardsValue:
-      "$1 = 10 puntos",
+    rewardsValue: "$1 = 10 puntos",
 
-    readyTitle:
-      "Tu pase de GULA Rewards está listo.",
+    readyTitle: "Tu pase de GULA Rewards está listo.",
 
     readyDescription:
       "Agrégalo a tu teléfono y muestra el código QR cada vez que hagas una compra.",
 
-    addWallet:
-      "Agregar a Apple / Google Wallet",
+    welcomeBackTitle: "¡Bienvenido de nuevo a GULA Rewards!",
 
-    startingBalance:
-      "Balance Inicial",
+    welcomeBackDescription:
+      "Encontramos tu membresía existente. No se creó una cuenta duplicada.",
 
-    points:
-      "0 puntos",
+    addWallet: "Agregar a Apple / Google Wallet",
 
-    another:
-      "Crear Otra Membresía",
+    existingWallet: "Abrir Mi Pase Existente",
 
-    staff:
-      "Terminal de Empleados",
+    startingBalance: "Balance Inicial",
 
-    genericError:
-      "Algo salió mal. Inténtalo nuevamente.",
+    currentBalance: "Balance Actual",
+
+    pointsWord: "puntos",
+
+    another: "Usar Otro Correo",
+
+    staff: "Terminal de Empleados",
+
+    genericError: "Algo salió mal. Inténtalo nuevamente.",
   },
 };
 
 export default function JoinPage() {
-  const [language, setLanguage] =
-    useState<Language>("en");
-
-  const [name, setName] =
-    useState("");
-
-  const [email, setEmail] =
-    useState("");
-
-  const [working, setWorking] =
-    useState(false);
+  const [language, setLanguage] = useState<Language>("en");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [working, setWorking] = useState(false);
 
   const [result, setResult] =
-    useState<JoinResponse | null>(
-      null,
-    );
+    useState<JoinResponse | null>(null);
 
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
 
   const t = translations[language];
 
   function toggleLanguage() {
     setLanguage((current) =>
-      current === "en"
-        ? "es"
-        : "en",
+      current === "en" ? "es" : "en",
     );
   }
 
@@ -209,8 +190,7 @@ export default function JoinPage() {
           method: "POST",
 
           headers: {
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           },
 
           body: JSON.stringify({
@@ -229,8 +209,7 @@ export default function JoinPage() {
         !data.passUrl
       ) {
         throw new Error(
-          data.error ||
-            t.genericError,
+          data.error || t.genericError,
         );
       }
 
@@ -246,34 +225,33 @@ export default function JoinPage() {
     }
   }
 
+  const displayedPoints =
+    typeof result?.points === "number"
+      ? result.points
+      : 0;
+
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto flex min-h-screen max-w-6xl items-center px-4 py-8 sm:px-6 lg:px-8">
         <div className="w-full">
-
-          {/* TOP BAR */}
+          {/* LANGUAGE BUTTON */}
           <div className="mb-4 flex justify-end">
             <button
               type="button"
               onClick={toggleLanguage}
               className="flex items-center gap-2 rounded-full border border-white/15 bg-neutral-950 px-5 py-2.5 text-sm font-bold text-white transition hover:border-red-500/50 hover:bg-red-500/10"
             >
-              🌐
-              {t.language}
+              🌐 {t.language}
             </button>
           </div>
 
           <div className="grid w-full overflow-hidden rounded-[2.25rem] border border-white/10 bg-neutral-950 shadow-2xl shadow-red-950/30 lg:grid-cols-[1.05fr_0.95fr]">
-
             {/* LEFT SIDE */}
             <section className="relative overflow-hidden border-b border-white/10 p-7 sm:p-10 lg:border-b-0 lg:border-r">
               <div className="pointer-events-none absolute -left-36 -top-36 h-96 w-96 rounded-full bg-red-600/20 blur-3xl" />
-
               <div className="pointer-events-none absolute -bottom-40 -right-20 h-96 w-96 rounded-full bg-orange-500/10 blur-3xl" />
 
               <div className="relative">
-
-                {/* LOGO */}
                 <div className="flex items-center gap-5">
                   <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-[2rem] bg-white p-2 shadow-2xl shadow-red-950/50 sm:h-32 sm:w-32">
                     <img
@@ -294,7 +272,6 @@ export default function JoinPage() {
                   </div>
                 </div>
 
-                {/* HERO */}
                 <h1 className="mt-8 max-w-xl text-4xl font-black tracking-[-0.04em] sm:text-5xl">
                   {t.heroTitle}
                 </h1>
@@ -303,10 +280,7 @@ export default function JoinPage() {
                   {t.heroDescription}
                 </p>
 
-                {/* STEPS */}
                 <div className="mt-8 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-
-                  {/* STEP 1 */}
                   <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
                     <span className="text-xs font-black uppercase tracking-[0.2em] text-red-500">
                       {t.step1Label}
@@ -321,7 +295,6 @@ export default function JoinPage() {
                     </p>
                   </div>
 
-                  {/* STEP 2 */}
                   <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
                     <span className="text-xs font-black uppercase tracking-[0.2em] text-red-500">
                       {t.step2Label}
@@ -336,7 +309,6 @@ export default function JoinPage() {
                     </p>
                   </div>
 
-                  {/* STEP 3 */}
                   <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
                     <span className="text-xs font-black uppercase tracking-[0.2em] text-red-500">
                       {t.step3Label}
@@ -350,7 +322,6 @@ export default function JoinPage() {
                       {t.step3Text}
                     </p>
                   </div>
-
                 </div>
               </div>
             </section>
@@ -375,8 +346,6 @@ export default function JoinPage() {
                     onSubmit={submit}
                     className="mt-7 space-y-5"
                   >
-
-                    {/* NAME */}
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-neutral-300">
                         {t.name}
@@ -389,18 +358,13 @@ export default function JoinPage() {
                         autoComplete="name"
                         value={name}
                         onChange={(event) =>
-                          setName(
-                            event.target.value,
-                          )
+                          setName(event.target.value)
                         }
-                        placeholder={
-                          t.namePlaceholder
-                        }
+                        placeholder={t.namePlaceholder}
                         className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 outline-none transition placeholder:text-neutral-600 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
                       />
                     </label>
 
-                    {/* EMAIL */}
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-neutral-300">
                         {t.email}
@@ -413,13 +377,9 @@ export default function JoinPage() {
                         autoComplete="email"
                         value={email}
                         onChange={(event) =>
-                          setEmail(
-                            event.target.value,
-                          )
+                          setEmail(event.target.value)
                         }
-                        placeholder={
-                          t.emailPlaceholder
-                        }
+                        placeholder={t.emailPlaceholder}
                         className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 outline-none transition placeholder:text-neutral-600 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
                       />
                     </label>
@@ -430,7 +390,6 @@ export default function JoinPage() {
                       </p>
                     ) : null}
 
-                    {/* CREATE PASS */}
                     <button
                       type="submit"
                       disabled={working}
@@ -442,7 +401,6 @@ export default function JoinPage() {
                     </button>
                   </form>
 
-                  {/* RATE */}
                   <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-sm text-neutral-500">
@@ -457,8 +415,6 @@ export default function JoinPage() {
                 </>
               ) : (
                 <div className="flex h-full flex-col justify-center">
-
-                  {/* SUCCESS LOGO */}
                   <div className="mx-auto flex h-36 w-36 items-center justify-center overflow-hidden rounded-[2rem] bg-white p-2 shadow-2xl shadow-red-950/50">
                     <img
                       src="/gula-wallet-logo.png"
@@ -467,41 +423,64 @@ export default function JoinPage() {
                     />
                   </div>
 
-                  {/* READY */}
-                  <div className="mt-7 rounded-3xl border border-emerald-500/25 bg-emerald-500/10 p-5 text-center">
-                    <p className="text-lg font-black text-emerald-200">
-                      {t.readyTitle}
+                  <div
+                    className={
+                      result.existingMember
+                        ? "mt-7 rounded-3xl border border-orange-500/25 bg-orange-500/10 p-5 text-center"
+                        : "mt-7 rounded-3xl border border-emerald-500/25 bg-emerald-500/10 p-5 text-center"
+                    }
+                  >
+                    <p
+                      className={
+                        result.existingMember
+                          ? "text-lg font-black text-orange-200"
+                          : "text-lg font-black text-emerald-200"
+                      }
+                    >
+                      {result.existingMember
+                        ? t.welcomeBackTitle
+                        : t.readyTitle}
                     </p>
 
-                    <p className="mt-2 text-sm leading-6 text-emerald-100/70">
-                      {t.readyDescription}
+                    <p
+                      className={
+                        result.existingMember
+                          ? "mt-2 text-sm leading-6 text-orange-100/70"
+                          : "mt-2 text-sm leading-6 text-emerald-100/70"
+                      }
+                    >
+                      {result.existingMember
+                        ? t.welcomeBackDescription
+                        : t.readyDescription}
                     </p>
                   </div>
 
-                  {/* ADD WALLET */}
                   <a
                     href={result.passUrl}
                     className="mt-5 block w-full rounded-2xl bg-red-600 px-5 py-4 text-center font-black text-white shadow-lg shadow-red-950/40 transition hover:-translate-y-0.5 hover:bg-red-500"
                   >
-                    {t.addWallet}
+                    {result.existingMember
+                      ? t.existingWallet
+                      : t.addWallet}
                   </a>
 
-                  {/* BALANCE */}
                   <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-xs uppercase tracking-wider text-neutral-600">
-                        {t.startingBalance}
+                        {result.existingMember
+                          ? t.currentBalance
+                          : t.startingBalance}
                       </span>
 
                       <span className="font-black text-white">
-                        {t.points}
+                        {displayedPoints.toLocaleString()}{" "}
+                        {t.pointsWord}
                       </span>
                     </div>
                   </div>
 
                   <p className="mt-4 break-all text-center text-xs text-neutral-700">
-                    Member ID:{" "}
-                    {result.memberId}
+                    Member ID: {result.memberId}
                   </p>
 
                   <button
