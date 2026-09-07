@@ -13,6 +13,10 @@ type JoinResponse = {
   existingMember?: boolean;
   name?: string;
   points?: number;
+
+  referralCode?: string;
+  referralApplied?: boolean;
+  referralBonus?: number;
 };
 
 const translations = {
@@ -50,6 +54,12 @@ const translations = {
     email: "Email",
     emailPlaceholder: "you@example.com",
 
+    referral: "Referral Code (optional)",
+    referralPlaceholder: "GULA-XXXXXXXX",
+
+    referralHelp:
+      "Have a friend's code? Use it to start with 300 points. Your friend gets 400 points.",
+
     submit: "Create My GULA Pass",
 
     submitting: "Checking your membership...",
@@ -77,6 +87,18 @@ const translations = {
     currentBalance: "Current Balance",
 
     pointsWord: "points",
+
+    referralBonusApplied:
+      "Referral bonus applied! You started with 300 points.",
+
+    yourReferralCode: "Your Referral Code",
+
+    referralShareText:
+      "Share this code with friends. They get 300 points when they join, and you get 400 points.",
+
+    copyCode: "Copy Code",
+
+    copied: "Copied!",
 
     another: "Use Another Email",
 
@@ -119,6 +141,12 @@ const translations = {
     email: "Correo electrónico",
     emailPlaceholder: "tu@email.com",
 
+    referral: "Código de referido (opcional)",
+    referralPlaceholder: "GULA-XXXXXXXX",
+
+    referralHelp:
+      "¿Tienes el código de un amigo? Úsalo para comenzar con 300 puntos. Tu amigo recibe 400 puntos.",
+
     submit: "Crear Mi Pase GULA",
 
     submitting: "Buscando tu membresía...",
@@ -147,6 +175,18 @@ const translations = {
 
     pointsWord: "puntos",
 
+    referralBonusApplied:
+      "¡Bono de referido aplicado! Comenzaste con 300 puntos.",
+
+    yourReferralCode: "Tu Código de Referido",
+
+    referralShareText:
+      "Comparte este código con tus amigos. Ellos reciben 300 puntos cuando se registren y tú recibes 400 puntos.",
+
+    copyCode: "Copiar Código",
+
+    copied: "¡Copiado!",
+
     another: "Usar Otro Correo",
 
     staff: "Terminal de Empleados",
@@ -159,12 +199,15 @@ export default function JoinPage() {
   const [language, setLanguage] = useState<Language>("en");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [referralCode, setReferralCode] = useState("");
+
   const [working, setWorking] = useState(false);
 
   const [result, setResult] =
     useState<JoinResponse | null>(null);
 
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const t = translations[language];
 
@@ -182,6 +225,7 @@ export default function JoinPage() {
     setWorking(true);
     setError("");
     setResult(null);
+    setCopied(false);
 
     try {
       const res = await fetch(
@@ -196,6 +240,7 @@ export default function JoinPage() {
           body: JSON.stringify({
             name,
             email,
+            referralCode,
           }),
         },
       );
@@ -225,6 +270,26 @@ export default function JoinPage() {
     }
   }
 
+  async function copyReferralCode() {
+    if (!result?.referralCode) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        result.referralCode,
+      );
+
+      setCopied(true);
+
+      window.setTimeout(() => {
+        setCopied(false);
+      }, 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   const displayedPoints =
     typeof result?.points === "number"
       ? result.points
@@ -234,6 +299,7 @@ export default function JoinPage() {
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto flex min-h-screen max-w-6xl items-center px-4 py-8 sm:px-6 lg:px-8">
         <div className="w-full">
+
           {/* LANGUAGE BUTTON */}
           <div className="mb-4 flex justify-end">
             <button
@@ -246,6 +312,7 @@ export default function JoinPage() {
           </div>
 
           <div className="grid w-full overflow-hidden rounded-[2.25rem] border border-white/10 bg-neutral-950 shadow-2xl shadow-red-950/30 lg:grid-cols-[1.05fr_0.95fr]">
+
             {/* LEFT SIDE */}
             <section className="relative overflow-hidden border-b border-white/10 p-7 sm:p-10 lg:border-b-0 lg:border-r">
               <div className="pointer-events-none absolute -left-36 -top-36 h-96 w-96 rounded-full bg-red-600/20 blur-3xl" />
@@ -346,6 +413,7 @@ export default function JoinPage() {
                     onSubmit={submit}
                     className="mt-7 space-y-5"
                   >
+                    {/* NAME */}
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-neutral-300">
                         {t.name}
@@ -365,6 +433,7 @@ export default function JoinPage() {
                       />
                     </label>
 
+                    {/* EMAIL */}
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-neutral-300">
                         {t.email}
@@ -382,6 +451,30 @@ export default function JoinPage() {
                         placeholder={t.emailPlaceholder}
                         className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 outline-none transition placeholder:text-neutral-600 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
                       />
+                    </label>
+
+                    {/* REFERRAL CODE */}
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-neutral-300">
+                        {t.referral}
+                      </span>
+
+                      <input
+                        maxLength={40}
+                        autoComplete="off"
+                        value={referralCode}
+                        onChange={(event) =>
+                          setReferralCode(
+                            event.target.value.toUpperCase(),
+                          )
+                        }
+                        placeholder={t.referralPlaceholder}
+                        className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 font-mono uppercase tracking-wider outline-none transition placeholder:text-neutral-600 focus:border-red-500 focus:ring-4 focus:ring-red-500/10"
+                      />
+
+                      <span className="mt-2 block text-xs leading-5 text-neutral-600">
+                        {t.referralHelp}
+                      </span>
                     </label>
 
                     {error ? (
@@ -455,6 +548,13 @@ export default function JoinPage() {
                     </p>
                   </div>
 
+                  {/* REFERRAL BONUS SUCCESS */}
+                  {result.referralApplied ? (
+                    <div className="mt-4 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-center text-sm font-bold text-emerald-200">
+                      {t.referralBonusApplied}
+                    </div>
+                  ) : null}
+
                   <a
                     href={result.passUrl}
                     className="mt-5 block w-full rounded-2xl bg-red-600 px-5 py-4 text-center font-black text-white shadow-lg shadow-red-950/40 transition hover:-translate-y-0.5 hover:bg-red-500"
@@ -464,6 +564,7 @@ export default function JoinPage() {
                       : t.addWallet}
                   </a>
 
+                  {/* POINT BALANCE */}
                   <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-xs uppercase tracking-wider text-neutral-600">
@@ -479,6 +580,33 @@ export default function JoinPage() {
                     </div>
                   </div>
 
+                  {/* MEMBER REFERRAL CODE */}
+                  {result.referralCode ? (
+                    <div className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/5 p-5 text-center">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-red-400">
+                        {t.yourReferralCode}
+                      </p>
+
+                      <p className="mt-3 break-all font-mono text-xl font-black tracking-wider text-white">
+                        {result.referralCode}
+                      </p>
+
+                      <p className="mt-3 text-xs leading-5 text-neutral-500">
+                        {t.referralShareText}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={copyReferralCode}
+                        className="mt-4 rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-bold transition hover:bg-white/10"
+                      >
+                        {copied
+                          ? t.copied
+                          : t.copyCode}
+                      </button>
+                    </div>
+                  ) : null}
+
                   <p className="mt-4 break-all text-center text-xs text-neutral-700">
                     Member ID: {result.memberId}
                   </p>
@@ -488,6 +616,8 @@ export default function JoinPage() {
                     onClick={() => {
                       setName("");
                       setEmail("");
+                      setReferralCode("");
+                      setCopied(false);
                       setResult(null);
                       setError("");
                     }}
