@@ -41,6 +41,7 @@ export function buildMemberPass({
   memberId,
   name,
   points,
+  referralCode,
   logoURL,
 }: MemberPassInput) {
   const rewardReady = points >= 1000;
@@ -60,7 +61,8 @@ export function buildMemberPass({
         key: "POINTS",
         label: "POINTS",
         value: String(points),
-        changeMessage: "Your GULA balance is now %@ points",
+        changeMessage:
+          "Your GULA balance is now %@ points",
       },
     ],
 
@@ -99,6 +101,23 @@ export function buildMemberPass({
         value:
           "Redeem 1000 points for one free reward at GULA EXPRESS.",
       },
+
+      ...(referralCode
+        ? [
+            {
+              key: "REFERRAL_CODE",
+              label: "Your Referral Code",
+              value: referralCode,
+            },
+
+            {
+              key: "REFER_FRIENDS",
+              label: "Refer a Friend",
+              value:
+                "Share your referral code. Your friend gets 300 points when they join and you get 400 points.",
+            },
+          ]
+        : []),
 
       {
         key: "ADDRESS",
