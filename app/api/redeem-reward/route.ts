@@ -21,6 +21,7 @@ type RedemptionResult = {
   name: string;
   newPoints: number;
   walletSerial: string | null;
+  referralCode: string | null;
 };
 
 export async function POST(req: Request) {
@@ -103,6 +104,12 @@ export async function POST(req: Request) {
               ? member.walletSerial
               : null;
 
+          const referralCode =
+            typeof member.referralCode ===
+              "string"
+              ? member.referralCode
+              : null;
+
           if (existingRedemption.exists) {
             const existing =
               existingRedemption.data() ??
@@ -119,6 +126,8 @@ export async function POST(req: Request) {
               ),
 
               walletSerial,
+
+              referralCode,
             };
           }
 
@@ -203,6 +212,7 @@ export async function POST(req: Request) {
             name,
             newPoints,
             walletSerial,
+            referralCode,
           };
         },
       );
@@ -250,12 +260,24 @@ export async function POST(req: Request) {
               points:
                 result.newPoints,
 
+              referralCode:
+                result.referralCode ??
+                undefined,
+
               logoURL,
             },
           );
 
         if (update.ok) {
           walletSynced = true;
+
+          await memberRef.update({
+            walletLogoApplied:
+              update.logoApplied,
+
+            lastUpdated:
+              FieldValue.serverTimestamp(),
+          });
         } else if (update.missing) {
           const replacement =
             await createWalletPass({
@@ -267,6 +289,10 @@ export async function POST(req: Request) {
 
               points:
                 result.newPoints,
+
+              referralCode:
+                result.referralCode ??
+                undefined,
 
               logoURL,
             });
@@ -301,6 +327,10 @@ export async function POST(req: Request) {
 
             points:
               result.newPoints,
+
+            referralCode:
+              result.referralCode ??
+              undefined,
 
             logoURL,
           });
