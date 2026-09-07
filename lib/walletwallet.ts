@@ -6,6 +6,7 @@ type MemberPassInput = {
   memberId: string;
   name: string;
   points: number;
+  referralCode?: string;
   logoURL?: string;
 };
 
