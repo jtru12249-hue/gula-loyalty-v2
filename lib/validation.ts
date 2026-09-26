@@ -1,22 +1,74 @@
-import "server-only";
+const MEMBER_ID_MAX_LENGTH = 128;
+const NAME_MAX_LENGTH = 80;
+const EMAIL_MAX_LENGTH = 254;
+const MAX_ORDER_CENTS = 1_000_000;
 
-export const REWARD_COST = 1000;
-export const POINTS_PER_DOLLAR = 10;
-
-export function safePoints(value: unknown) {
-  const points = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(points)) return 0;
-  return Math.max(0, Math.floor(points));
+export function normalizeMemberId(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, MEMBER_ID_MAX_LENGTH);
 }
 
-export const normalizePoints = safePoints;
-
-export function canRedeemReward(points: unknown) {
-  return safePoints(points) >= REWARD_COST;
+export function isValidMemberId(memberId: string) {
+  if (!memberId || memberId.length > MEMBER_ID_MAX_LENGTH) return false;
+  if (memberId.includes("/")) return false;
+  if (/[\u0000-\u001F\u007F]/.test(memberId)) return false;
+  return /^[A-Za-z0-9_-]+$/.test(memberId);
 }
 
-export function pointsAfterRedemption(points: unknown) {
-  const currentPoints = safePoints(points);
-  if (currentPoints < REWARD_COST) throw new Error("NOT_ENOUGH_POINTS");
-  return currentPoints - REWARD_COST;
+export function requireValidMemberId(value: unknown) {
+  const memberId = normalizeMemberId(value);
+  if (!isValidMemberId(memberId)) throw new Error("INVALID_MEMBER_ID");
+  return memberId;
+}
+
+export function normalizeName(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, " ").slice(0, NAME_MAX_LENGTH);
+}
+
+export function isValidName(name: string) {
+  if (name.length < 2 || name.length > NAME_MAX_LENGTH) return false;
+  return !/[\u0000-\u001F\u007F]/.test(name);
+}
+
+export function normalizeEmail(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim().toLowerCase().slice(0, EMAIL_MAX_LENGTH);
+}
+
+export function isValidEmail(email: string) {
+  if (!email || email.length > EMAIL_MAX_LENGTH || email.includes("..")) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+export function parseSpendAmount(value: unknown) {
+  let amount: number;
+
+  if (typeof value === "number") {
+    amount = value;
+  } else if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw || !/^\d+(?:\.\d{1,2})?$/.test(raw)) {
+      throw new Error("INVALID_ORDER_TOTAL");
+    }
+    amount = Number(raw);
+  } else {
+    throw new Error("INVALID_ORDER_TOTAL");
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("INVALID_ORDER_TOTAL");
+
+  const spendCents = Math.round(amount * 100);
+  if (spendCents <= 0 || spendCents > MAX_ORDER_CENTS) {
+    throw new Error("INVALID_ORDER_TOTAL");
+  }
+
+  const pointsEarned = Math.floor(spendCents / 10);
+  if (pointsEarned < 1) throw new Error("ORDER_EARNS_NO_POINTS");
+
+  return {
+    spendCents,
+    spendAmount: spendCents / 100,
+    pointsEarned,
+  };
 }
