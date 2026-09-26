@@ -1,88 +1,38 @@
-const MEMBER_ID_MAX_LENGTH = 128;
-const NAME_MAX_LENGTH = 80;
-const EMAIL_MAX_LENGTH = 254;
-const MAX_ORDER_CENTS = 1_000_000;
+import "server-only";
 
-export function normalizeMemberId(value: unknown) {
+import { createHash } from "node:crypto";
+
+export const NEW_MEMBER_REFERRAL_BONUS = 300;
+export const REFERRER_BONUS = 400;
+export const REFERRAL_PREFIX = "GULA-";
+export const REFERRAL_HASH_LENGTH = 12;
+
+export function normalizeReferralCode(value: unknown) {
   if (typeof value !== "string") return "";
-  return value.trim().slice(0, MEMBER_ID_MAX_LENGTH);
+  return value.trim().toUpperCase().replace(/\s+/g, "").slice(0, 40);
 }
 
-export function isValidMemberId(memberId: string) {
-  return (
-    memberId.length > 0 &&
-    memberId.length <= MEMBER_ID_MAX_LENGTH &&
-    /^[A-Za-z0-9_-]+$/.test(memberId)
-  );
+export function isValidReferralCode(value: unknown) {
+  const code = normalizeReferralCode(value);
+  return /^GULA-[A-F0-9]{8,16}$/.test(code);
 }
 
-export function requireValidMemberId(value: unknown) {
-  const memberId = normalizeMemberId(value);
-  if (!isValidMemberId(memberId)) {
-    throw new Error("INVALID_MEMBER_ID");
-  }
-  return memberId;
-}
-
-export function normalizeName(value: unknown) {
-  if (typeof value !== "string") return "";
-  return value.trim().replace(/\s+/g, " ").slice(0, NAME_MAX_LENGTH);
-}
-
-export function isValidName(name: string) {
-  return (
-    name.length >= 2 &&
-    name.length <= NAME_MAX_LENGTH &&
-    !/[\u0000-\u001F\u007F]/.test(name)
-  );
-}
-
-export function normalizeEmail(value: unknown) {
-  if (typeof value !== "string") return "";
-  return value.trim().toLowerCase().slice(0, EMAIL_MAX_LENGTH);
-}
-
-export function isValidEmail(email: string) {
-  return (
-    email.length > 0 &&
-    email.length <= EMAIL_MAX_LENGTH &&
-    !email.includes("..") &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  );
-}
-
-export function parseSpendAmount(value: unknown) {
-  let amount: number;
-
-  if (typeof value === "number") {
-    amount = value;
-  } else if (typeof value === "string") {
-    const raw = value.trim();
-    if (!raw || !/^\d+(?:\.\d{1,2})?$/.test(raw)) {
-      throw new Error("INVALID_SPEND_AMOUNT");
-    }
-    amount = Number(raw);
-  } else {
-    throw new Error("INVALID_SPEND_AMOUNT");
+export function referralCodeForMember(memberId: string, attempt = 0) {
+  if (!memberId.trim() || !Number.isInteger(attempt) || attempt < 0) {
+    throw new Error("INVALID_REFERRAL_CODE_INPUT");
   }
 
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error("INVALID_SPEND_AMOUNT");
-  }
+  const source = attempt === 0 ? memberId : `${memberId}:${attempt}`;
+  const hash = createHash("sha256")
+    .update(source)
+    .digest("hex")
+    .slice(0, REFERRAL_HASH_LENGTH)
+    .toUpperCase();
 
-  const spendCents = Math.round(amount * 100);
-  if (spendCents <= 0 || spendCents > MAX_ORDER_CENTS) {
-    throw new Error("INVALID_SPEND_AMOUNT");
-  }
+  return `${REFERRAL_PREFIX}${hash}`;
+}
 
-  const pointsEarned = Math.floor(spendCents / 10);
-  if (pointsEarned < 1) {
-    throw new Error("ORDER_EARNS_NO_POINTS");
-  }
-
-  return {
-    spendCents,
-    spendAmount: spendCents / 100,
-    pointsEarned,
-  };
+export function safeReferralCode(value: unknown) {
+  const code = normalizeReferralCode(value);
+  return isValidReferralCode(code) ? code : null;
 }
