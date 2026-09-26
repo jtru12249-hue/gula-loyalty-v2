@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     try {
       memberId = requireValidMemberId(body?.memberId);
     } catch {
-      return jsonError("Invalid GULA Rewards QR code.");
+      return jsonError("Invalid GULA Rewards QR code.", 400);
     }
 
     const idempotencyKey =
@@ -52,6 +52,7 @@ export async function POST(req: Request) {
     if (!idempotencyKey) {
       return jsonError(
         "Missing redemption transaction id.",
+        400,
       );
     }
 
