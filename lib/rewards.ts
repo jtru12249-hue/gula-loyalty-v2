@@ -1,74 +1,22 @@
 import "server-only";
 
-/*
- * =========================================================
- * GULA REWARDS — REWARD BUSINESS RULES
- * =========================================================
- *
- * Keep reward-related values here so every part of the
- * application uses the exact same rules.
- */
-
-// Customer needs 1,000 points to redeem one reward.
 export const REWARD_COST = 1000;
-
-// $1.00 spent = 10 GULA points.
 export const POINTS_PER_DOLLAR = 10;
 
-/*
- * Safely converts a Firestore points value into a usable
- * non-negative integer.
- */
-export function normalizePoints(
-  value: unknown,
-) {
-  if (
-    typeof value !== "number" ||
-    !Number.isFinite(value)
-  ) {
-    return 0;
-  }
-
-  return Math.max(
-    0,
-    Math.floor(value),
-  );
+export function safePoints(value: unknown) {
+  const points = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(points)) return 0;
+  return Math.max(0, Math.floor(points));
 }
 
-/*
- * Returns true when the member has enough points
- * to redeem a free reward.
- */
-export function canRedeemReward(
-  points: number,
-) {
-  return (
-    normalizePoints(points) >=
-    REWARD_COST
-  );
+export const normalizePoints = safePoints;
+
+export function canRedeemReward(points: unknown) {
+  return safePoints(points) >= REWARD_COST;
 }
 
-/*
- * Returns the customer's points after redeeming
- * one reward.
- */
-export function pointsAfterRedemption(
-  points: number,
-) {
-  const safePoints =
-    normalizePoints(points);
-
-  if (
-    safePoints <
-    REWARD_COST
-  ) {
-    throw new Error(
-      "Member does not have enough points to redeem this reward.",
-    );
-  }
-
-  return (
-    safePoints -
-    REWARD_COST
-  );
+export function pointsAfterRedemption(points: unknown) {
+  const currentPoints = safePoints(points);
+  if (currentPoints < REWARD_COST) throw new Error("NOT_ENOUGH_POINTS");
+  return currentPoints - REWARD_COST;
 }
