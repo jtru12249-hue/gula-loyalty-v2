@@ -1,169 +1,118 @@
+import { createHash } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 
 import { adminDb } from "@/lib/firebase-admin";
 import { getErrorMessage, jsonError } from "@/lib/http";
-
 import {
   NEW_MEMBER_REFERRAL_BONUS,
   REFERRER_BONUS,
+  isValidReferralCode,
   normalizeReferralCode,
   referralCodeForMember,
+  safeReferralCode,
 } from "@/lib/referrals";
-
+import { safePoints } from "@/lib/rewards";
 import {
   isValidEmail,
+  isValidName,
   normalizeEmail,
   normalizeName,
 } from "@/lib/validation";
-
-import {
-  createWalletPass,
-  updateWalletPass,
-} from "@/lib/walletwallet";
+import { createWalletPass, updateWalletPass } from "@/lib/walletwallet";
 
 export const runtime = "nodejs";
+
+function emailKey(email: string) {
+  return createHash("sha256").update(email).digest("hex");
+}
 
 async function ensureReferralCode(
   memberRef: FirebaseFirestore.DocumentReference,
   existingCode?: unknown,
 ) {
-  const oldCode =
-    normalizeReferralCode(existingCode);
+  const oldCode = safeReferralCode(existingCode);
 
   if (oldCode) {
-    await adminDb
-      .collection("referralCodes")
-      .doc(oldCode)
-      .set(
+    const codeRef = adminDb.collection("referralCodes").doc(oldCode);
+    await adminDb.runTransaction(async (transaction) => {
+      const codeSnap = await transaction.get(codeRef);
+      const owner = codeSnap.exists ? String(codeSnap.data()?.memberId ?? "") : "";
+
+      if (owner && owner !== memberRef.id) {
+        throw new Error("REFERRAL_CODE_COLLISION");
+      }
+
+      transaction.set(
+        codeRef,
         {
           memberId: memberRef.id,
-          updatedAt:
-            FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
       );
-
+    });
     return oldCode;
   }
 
-  const newCode =
-    referralCodeForMember(memberRef.id);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const candidate = referralCodeForMember(memberRef.id, attempt);
+    const codeRef = adminDb.collection("referralCodes").doc(candidate);
 
-  await adminDb
-    .collection("referralCodes")
-    .doc(newCode)
-    .set({
-      memberId: memberRef.id,
-      createdAt:
-        FieldValue.serverTimestamp(),
-    });
+    try {
+      await adminDb.runTransaction(async (transaction) => {
+        const codeSnap = await transaction.get(codeRef);
+        const owner = codeSnap.exists ? String(codeSnap.data()?.memberId ?? "") : "";
+        if (owner && owner !== memberRef.id) {
+          throw new Error("REFERRAL_CODE_COLLISION");
+        }
 
-  await memberRef.set(
-    {
-      referralCode: newCode,
-      lastUpdated:
-        FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+        transaction.set(codeRef, {
+          memberId: memberRef.id,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        transaction.set(
+          memberRef,
+          {
+            referralCode: candidate,
+            lastUpdated: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+      return candidate;
+    } catch (error) {
+      if (getErrorMessage(error) !== "REFERRAL_CODE_COLLISION") throw error;
+    }
+  }
 
-  return newCode;
+  throw new Error("COULD_NOT_CREATE_REFERRAL_CODE");
 }
 
 async function returnExistingMember(
   req: Request,
-  doc: FirebaseFirestore.QueryDocumentSnapshot,
+  doc: FirebaseFirestore.DocumentSnapshot,
   fallbackName: string,
   normalizedEmail: string,
 ) {
-  const data = doc.data();
+  if (!doc.exists) throw new Error("MEMBER_NOT_FOUND");
 
+  const data = doc.data() ?? {};
   const name =
-    typeof data.name === "string"
-      ? data.name
-      : fallbackName;
+    typeof data.name === "string" && data.name.trim() ? data.name.trim() : fallbackName;
+  const points = safePoints(data.points);
+  const referralCode = await ensureReferralCode(doc.ref, data.referralCode);
+  const logoURL = new URL("/gula-wallet-logo.png", req.url).toString();
 
-  const points = Math.max(
-    0,
-    Number(data.points ?? 0),
-  );
-
-  const referralCode =
-    await ensureReferralCode(
-      doc.ref,
-      data.referralCode,
-    );
-
-  const logoURL = new URL(
-    "/gula-wallet-logo.png",
-    req.url,
-  ).toString();
-
-  let passUrl =
-    typeof data.passUrl === "string"
-      ? data.passUrl
-      : null;
-
+  let passUrl = typeof data.passUrl === "string" ? data.passUrl : null;
   const walletSerial =
-    typeof data.walletSerial === "string"
+    typeof data.walletSerial === "string" && data.walletSerial.trim()
       ? data.walletSerial
       : null;
 
-  /*
-    Update their existing Wallet pass
-    so older members also see their
-    referral code.
-  */
-  if (walletSerial) {
-    try {
-      const update =
-        await updateWalletPass(
-          walletSerial,
-          {
-            memberId: doc.id,
-            name,
-            points,
-            referralCode,
-            logoURL,
-          },
-        );
-
-      if (!update.ok) {
-        const wallet =
-          await createWalletPass({
-            memberId: doc.id,
-            name,
-            points,
-            referralCode,
-            logoURL,
-          });
-
-        passUrl = wallet.shareUrl;
-
-        await doc.ref.update({
-          walletSerial:
-            wallet.serialNumber,
-
-          passUrl:
-            wallet.shareUrl,
-
-          googleSaveUrl:
-            wallet.googleSaveUrl,
-
-          walletLogoApplied:
-            wallet.logoApplied,
-        });
-      }
-    } catch (error) {
-      console.error(
-        "Could not update existing wallet",
-        error,
-      );
-    }
-  } else {
-    const wallet =
-      await createWalletPass({
+  try {
+    if (walletSerial) {
+      const update = await updateWalletPass(walletSerial, {
         memberId: doc.id,
         name,
         points,
@@ -171,547 +120,342 @@ async function returnExistingMember(
         logoURL,
       });
 
-    passUrl = wallet.shareUrl;
-
-    await doc.ref.update({
-      walletSerial:
-        wallet.serialNumber,
-
-      passUrl:
-        wallet.shareUrl,
-
-      googleSaveUrl:
-        wallet.googleSaveUrl,
-
-      walletLogoApplied:
-        wallet.logoApplied,
-    });
+      if (!update.ok) {
+        const wallet = await createWalletPass({
+          memberId: doc.id,
+          name,
+          points,
+          referralCode,
+          logoURL,
+        });
+        passUrl = wallet.shareUrl;
+        await doc.ref.set(
+          {
+            walletSerial: wallet.serialNumber,
+            passUrl: wallet.shareUrl,
+            googleSaveUrl: wallet.googleSaveUrl,
+            walletLogoApplied: wallet.logoApplied,
+            lastUpdated: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+    } else {
+      const wallet = await createWalletPass({
+        memberId: doc.id,
+        name,
+        points,
+        referralCode,
+        logoURL,
+      });
+      passUrl = wallet.shareUrl;
+      await doc.ref.set(
+        {
+          walletSerial: wallet.serialNumber,
+          passUrl: wallet.shareUrl,
+          googleSaveUrl: wallet.googleSaveUrl,
+          walletLogoApplied: wallet.logoApplied,
+          lastUpdated: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+  } catch (error) {
+    console.error("Could not sync existing member wallet", error);
   }
 
   await doc.ref.set(
     {
       normalizedEmail,
-
       referralCode,
+      lastUpdated: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
 
-      lastUpdated:
-        FieldValue.serverTimestamp(),
+  await adminDb.collection("memberEmails").doc(emailKey(normalizedEmail)).set(
+    {
+      memberId: doc.id,
+      normalizedEmail,
+      updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },
   );
 
   return NextResponse.json({
     success: true,
-
     existingMember: true,
-
     memberId: doc.id,
-
     name,
-
     points,
-
     referralCode,
-
     passUrl,
   });
 }
 
+type SignupResult = {
+  existingMemberId: string | null;
+  ownReferralCode: string | null;
+  startingPoints: number;
+  referrerId: string | null;
+  referrerWalletSerial: string | null;
+  referrerName: string;
+  referrerNewPoints: number | null;
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const name = normalizeName(body?.name);
+    const email = normalizeEmail(body?.email);
+    const enteredReferralCode = normalizeReferralCode(body?.referralCode);
 
-    const name =
-      normalizeName(body?.name);
-
-    const email =
-      normalizeEmail(body?.email);
-
-    const enteredReferralCode =
-      normalizeReferralCode(
-        body?.referralCode,
-      );
-
-    if (name.length < 2) {
-      return jsonError(
-        "Please enter your name.",
-      );
+    if (!isValidName(name)) return jsonError("Please enter your name.");
+    if (!isValidEmail(email)) return jsonError("Please enter a valid email address.");
+    if (enteredReferralCode && !isValidReferralCode(enteredReferralCode)) {
+      return jsonError("That referral code is not valid. Check the code or leave the field blank.");
     }
 
-    if (!isValidEmail(email)) {
-      return jsonError(
-        "Please enter a valid email address.",
-      );
-    }
+    const normalizedEmail = email;
 
-    const normalizedEmail =
-      email.trim().toLowerCase();
-
-    /*
-      FIRST:
-      Check if this email already has
-      a GULA membership.
-    */
-    const existingQuery =
-      await adminDb
-        .collection("members")
-        .where(
-          "normalizedEmail",
-          "==",
-          normalizedEmail,
-        )
-        .limit(1)
-        .get();
+    // Migrate legacy members before relying on the new unique-email index.
+    const existingQuery = await adminDb
+      .collection("members")
+      .where("normalizedEmail", "==", normalizedEmail)
+      .limit(1)
+      .get();
 
     if (!existingQuery.empty) {
-      return returnExistingMember(
-        req,
-        existingQuery.docs[0],
-        name,
-        normalizedEmail,
-      );
+      return returnExistingMember(req, existingQuery.docs[0], name, normalizedEmail);
     }
 
-    /*
-      Check old customers who were
-      created before normalizedEmail.
-    */
-    const oldQuery =
-      await adminDb
-        .collection("members")
-        .where(
-          "email",
-          "==",
-          email,
-        )
-        .limit(1)
-        .get();
-
+    const oldQuery = await adminDb.collection("members").where("email", "==", email).limit(1).get();
     if (!oldQuery.empty) {
-      return returnExistingMember(
-        req,
-        oldQuery.docs[0],
-        name,
-        normalizedEmail,
-      );
+      return returnExistingMember(req, oldQuery.docs[0], name, normalizedEmail);
     }
 
-    /*
-      Validate referral code.
-    */
-    let referrerRef:
-      FirebaseFirestore.DocumentReference
-      | null = null;
+    const newMemberRef = adminDb.collection("members").doc();
+    const emailRef = adminDb.collection("memberEmails").doc(emailKey(normalizedEmail));
+    const referralInputRef = enteredReferralCode
+      ? adminDb.collection("referralCodes").doc(enteredReferralCode)
+      : null;
 
-    if (enteredReferralCode) {
-      const referralSnap =
-        await adminDb
-          .collection("referralCodes")
-          .doc(enteredReferralCode)
-          .get();
+    let signupResult: SignupResult | null = null;
 
-      if (!referralSnap.exists) {
-        return jsonError(
-          "That referral code is not valid. Check the code or leave the field blank.",
-          400,
-        );
-      }
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const ownReferralCode = referralCodeForMember(newMemberRef.id, attempt);
+      const ownReferralRef = adminDb.collection("referralCodes").doc(ownReferralCode);
 
-      const referrerId =
-        String(
-          referralSnap.data()
-            ?.memberId ?? "",
-        );
-
-      if (!referrerId) {
-        return jsonError(
-          "That referral code is not valid.",
-          400,
-        );
-      }
-
-      referrerRef =
-        adminDb
-          .collection("members")
-          .doc(referrerId);
-
-      const referrerSnap =
-        await referrerRef.get();
-
-      if (!referrerSnap.exists) {
-        return jsonError(
-          "That referral code is not valid.",
-          400,
-        );
-      }
-    }
-
-    /*
-      Create new member.
-    */
-    const newMemberRef =
-      adminDb
-        .collection("members")
-        .doc();
-
-    const memberId =
-      newMemberRef.id;
-
-    const ownReferralCode =
-      referralCodeForMember(
-        memberId,
-      );
-
-    const startingPoints =
-      enteredReferralCode
-        ? NEW_MEMBER_REFERRAL_BONUS
-        : 0;
-
-    let referrerWalletSerial:
-      string | null = null;
-
-    let referrerName =
-      "GULA Member";
-
-    let referrerNewPoints:
-      number | null = null;
-
-    /*
-      Transaction keeps the referral
-      bonus secure on the server.
-    */
-    await adminDb.runTransaction(
-      async (transaction) => {
-        if (referrerRef) {
-          const referrerSnap =
-            await transaction.get(
-              referrerRef,
-            );
-
-          if (!referrerSnap.exists) {
-            throw new Error(
-              "Invalid referral.",
-            );
+      try {
+        signupResult = await adminDb.runTransaction<SignupResult>(async (transaction) => {
+          // Firestore requires transaction reads before writes.
+          const emailSnap = await transaction.get(emailRef);
+          if (emailSnap.exists) {
+            const existingMemberId = String(emailSnap.data()?.memberId ?? "");
+            if (!existingMemberId) throw new Error("INVALID_EMAIL_INDEX");
+            return {
+              existingMemberId,
+              ownReferralCode: null,
+              startingPoints: 0,
+              referrerId: null,
+              referrerWalletSerial: null,
+              referrerName: "GULA Member",
+              referrerNewPoints: null,
+            };
           }
 
-          const referrer =
-            referrerSnap.data() ??
-            {};
+          const ownReferralSnap = await transaction.get(ownReferralRef);
+          if (ownReferralSnap.exists) throw new Error("REFERRAL_CODE_COLLISION");
 
-          const previousPoints =
-            Math.max(
-              0,
-              Number(
-                referrer.points ?? 0,
-              ),
-            );
+          let referrerRef: FirebaseFirestore.DocumentReference | null = null;
+          let referrerSnap: FirebaseFirestore.DocumentSnapshot | null = null;
 
-          const newPoints =
-            previousPoints +
-            REFERRER_BONUS;
+          if (referralInputRef) {
+            const referralSnap = await transaction.get(referralInputRef);
+            if (!referralSnap.exists) throw new Error("INVALID_REFERRAL");
 
-          referrerNewPoints =
-            newPoints;
+            const referrerId = String(referralSnap.data()?.memberId ?? "");
+            if (!referrerId) throw new Error("INVALID_REFERRAL");
 
-          referrerName =
-            typeof referrer.name ===
-              "string"
-              ? referrer.name
-              : "GULA Member";
+            referrerRef = adminDb.collection("members").doc(referrerId);
+            referrerSnap = await transaction.get(referrerRef);
+            if (!referrerSnap.exists) throw new Error("INVALID_REFERRAL");
+          }
 
-          referrerWalletSerial =
-            typeof referrer.walletSerial ===
-              "string"
-              ? referrer.walletSerial
-              : null;
+          const startingPoints = referralInputRef ? NEW_MEMBER_REFERRAL_BONUS : 0;
+          let referrerWalletSerial: string | null = null;
+          let referrerName = "GULA Member";
+          let referrerNewPoints: number | null = null;
 
-          transaction.update(
-            referrerRef,
-            {
-              points:
-                newPoints,
+          if (referrerRef && referrerSnap) {
+            const referrer = referrerSnap.data() ?? {};
+            const previousPoints = safePoints(referrer.points);
+            referrerNewPoints = previousPoints + REFERRER_BONUS;
+            referrerName =
+              typeof referrer.name === "string" && referrer.name.trim()
+                ? referrer.name.trim()
+                : "GULA Member";
+            referrerWalletSerial =
+              typeof referrer.walletSerial === "string" ? referrer.walletSerial : null;
 
-              referralCount:
-                FieldValue.increment(
-                  1,
-                ),
+            transaction.update(referrerRef, {
+              points: referrerNewPoints,
+              referralCount: FieldValue.increment(1),
+              referralPointsEarned: FieldValue.increment(REFERRER_BONUS),
+              lastUpdated: FieldValue.serverTimestamp(),
+            });
 
-              referralPointsEarned:
-                FieldValue.increment(
-                  REFERRER_BONUS,
-                ),
-
-              lastUpdated:
-                FieldValue.serverTimestamp(),
-            },
-          );
-
-          const referrerTransaction =
-            adminDb
-              .collection(
-                "pointTransactions",
-              )
-              .doc();
-
-          transaction.set(
-            referrerTransaction,
-            {
-              memberId:
-                referrerRef.id,
-
-              type:
-                "referral_reward",
-
-              pointsEarned:
-                REFERRER_BONUS,
-
+            transaction.set(adminDb.collection("pointTransactions").doc(), {
+              memberId: referrerRef.id,
+              type: "referral_reward",
+              pointsEarned: REFERRER_BONUS,
               previousPoints,
+              newPoints: referrerNewPoints,
+              referredMemberId: newMemberRef.id,
+              referralCodeUsed: enteredReferralCode,
+              createdAt: FieldValue.serverTimestamp(),
+            });
+          }
 
-              newPoints,
-
-              referredMemberId:
-                memberId,
-
-              referralCodeUsed:
-                enteredReferralCode,
-
-              createdAt:
-                FieldValue.serverTimestamp(),
-            },
-          );
-        }
-
-        transaction.set(
-          newMemberRef,
-          {
+          transaction.set(newMemberRef, {
             name,
-
             email,
-
             normalizedEmail,
+            points: startingPoints,
+            referralCode: ownReferralCode,
+            referredBy: enteredReferralCode || null,
+            referralBonusReceived: Boolean(enteredReferralCode),
+            createdAt: FieldValue.serverTimestamp(),
+            lastUpdated: FieldValue.serverTimestamp(),
+            walletSerial: null,
+            passUrl: null,
+            googleSaveUrl: null,
+          });
 
-            points:
-              startingPoints,
+          transaction.set(emailRef, {
+            memberId: newMemberRef.id,
+            normalizedEmail,
+            createdAt: FieldValue.serverTimestamp(),
+          });
 
-            referralCode:
-              ownReferralCode,
+          transaction.set(ownReferralRef, {
+            memberId: newMemberRef.id,
+            createdAt: FieldValue.serverTimestamp(),
+          });
 
-            referredBy:
-              enteredReferralCode ||
-              null,
+          if (enteredReferralCode) {
+            transaction.set(adminDb.collection("pointTransactions").doc(), {
+              memberId: newMemberRef.id,
+              type: "referral_signup",
+              pointsEarned: NEW_MEMBER_REFERRAL_BONUS,
+              previousPoints: 0,
+              newPoints: NEW_MEMBER_REFERRAL_BONUS,
+              referralCodeUsed: enteredReferralCode,
+              referredByMemberId: referrerRef?.id ?? null,
+              createdAt: FieldValue.serverTimestamp(),
+            });
+          }
 
-            referralBonusReceived:
-              Boolean(
-                enteredReferralCode,
-              ),
+          return {
+            existingMemberId: null,
+            ownReferralCode,
+            startingPoints,
+            referrerId: referrerRef?.id ?? null,
+            referrerWalletSerial,
+            referrerName,
+            referrerNewPoints,
+          };
+        });
+        break;
+      } catch (error) {
+        if (getErrorMessage(error) !== "REFERRAL_CODE_COLLISION") throw error;
+      }
+    }
 
-            createdAt:
-              FieldValue.serverTimestamp(),
+    if (!signupResult) throw new Error("COULD_NOT_CREATE_REFERRAL_CODE");
 
-            lastUpdated:
-              FieldValue.serverTimestamp(),
+    if (signupResult.existingMemberId) {
+      const existing = await adminDb.collection("members").doc(signupResult.existingMemberId).get();
+      return returnExistingMember(req, existing, name, normalizedEmail);
+    }
 
-            walletSerial:
-              null,
+    const ownReferralCode = signupResult.ownReferralCode;
+    if (!ownReferralCode) throw new Error("COULD_NOT_CREATE_REFERRAL_CODE");
 
-            passUrl:
-              null,
+    const logoURL = new URL("/gula-wallet-logo.png", req.url).toString();
+    let passUrl: string | null = null;
+    let walletLogoApplied = false;
 
-            googleSaveUrl:
-              null,
-          },
-        );
-
-        transaction.set(
-          adminDb
-            .collection(
-              "referralCodes",
-            )
-            .doc(
-              ownReferralCode,
-            ),
-          {
-            memberId,
-
-            createdAt:
-              FieldValue.serverTimestamp(),
-          },
-        );
-
-        /*
-          Save +300 history for
-          the new customer.
-        */
-        if (
-          enteredReferralCode
-        ) {
-          const signupTransaction =
-            adminDb
-              .collection(
-                "pointTransactions",
-              )
-              .doc();
-
-          transaction.set(
-            signupTransaction,
-            {
-              memberId,
-
-              type:
-                "referral_signup",
-
-              pointsEarned:
-                NEW_MEMBER_REFERRAL_BONUS,
-
-              previousPoints:
-                0,
-
-              newPoints:
-                NEW_MEMBER_REFERRAL_BONUS,
-
-              referralCodeUsed:
-                enteredReferralCode,
-
-              referredByMemberId:
-                referrerRef?.id ??
-                null,
-
-              createdAt:
-                FieldValue.serverTimestamp(),
-            },
-          );
-        }
-      },
-    );
-
-    /*
-      Create Wallet pass.
-    */
-    const logoURL =
-      new URL(
-        "/gula-wallet-logo.png",
-        req.url,
-      ).toString();
-
-    const wallet =
-      await createWalletPass({
-        memberId,
-
+    try {
+      const wallet = await createWalletPass({
+        memberId: newMemberRef.id,
         name,
-
-        points:
-          startingPoints,
-
-        referralCode:
-          ownReferralCode,
-
+        points: signupResult.startingPoints,
+        referralCode: ownReferralCode,
         logoURL,
       });
 
-    await newMemberRef.update({
-      walletSerial:
-        wallet.serialNumber,
+      passUrl = wallet.shareUrl;
+      walletLogoApplied = wallet.logoApplied;
+      await newMemberRef.update({
+        walletSerial: wallet.serialNumber,
+        passUrl: wallet.shareUrl,
+        googleSaveUrl: wallet.googleSaveUrl,
+        walletLogoApplied: wallet.logoApplied,
+        lastUpdated: FieldValue.serverTimestamp(),
+      });
+    } catch (walletError) {
+      // Membership creation should survive a temporary third-party Wallet outage.
+      console.error("New member wallet creation failed", walletError);
+    }
 
-      passUrl:
-        wallet.shareUrl,
-
-      googleSaveUrl:
-        wallet.googleSaveUrl,
-
-      walletLogoApplied:
-        wallet.logoApplied,
-
-      lastUpdated:
-        FieldValue.serverTimestamp(),
-    });
-
-    /*
-      Update the person who referred
-      them so their Wallet immediately
-      shows the extra 400 points.
-    */
     if (
-      referrerRef &&
-      referrerWalletSerial &&
-      referrerNewPoints !== null
+      signupResult.referrerId &&
+      signupResult.referrerWalletSerial &&
+      signupResult.referrerNewPoints !== null
     ) {
       try {
-        const referrerSnap =
-          await referrerRef.get();
+        const referrerRef = adminDb.collection("members").doc(signupResult.referrerId);
+        const referrerSnap = await referrerRef.get();
+        const referrerData = referrerSnap.data() ?? {};
 
-        const referrerData =
-          referrerSnap.data() ??
-          {};
-
-        await updateWalletPass(
-          referrerWalletSerial,
-          {
-            memberId:
-              referrerRef.id,
-
-            name:
-              referrerName,
-
-            points:
-              referrerNewPoints,
-
-            referralCode:
-              typeof referrerData.referralCode ===
-                "string"
-                ? referrerData.referralCode
-                : undefined,
-
-            logoURL,
-          },
-        );
-      } catch (error) {
-        console.error(
-          "Referral wallet update failed",
-          error,
-        );
+        await updateWalletPass(signupResult.referrerWalletSerial, {
+          memberId: signupResult.referrerId,
+          name: signupResult.referrerName,
+          points: signupResult.referrerNewPoints,
+          referralCode: safeReferralCode(referrerData.referralCode) ?? undefined,
+          logoURL,
+        });
+      } catch (walletError) {
+        console.error("Referral wallet update failed", walletError);
       }
     }
 
     return NextResponse.json({
       success: true,
-
       existingMember: false,
-
-      memberId,
-
+      memberId: newMemberRef.id,
       name,
-
-      points:
-        startingPoints,
-
-      referralCode:
-        ownReferralCode,
-
-      referralApplied:
-        Boolean(
-          enteredReferralCode,
-        ),
-
-      referralBonus:
-        enteredReferralCode
-          ? NEW_MEMBER_REFERRAL_BONUS
-          : 0,
-
-      passUrl:
-        wallet.shareUrl,
-
-      walletLogoApplied:
-        wallet.logoApplied,
+      points: signupResult.startingPoints,
+      referralCode: ownReferralCode,
+      referralApplied: Boolean(enteredReferralCode),
+      referralBonus: enteredReferralCode ? NEW_MEMBER_REFERRAL_BONUS : 0,
+      passUrl,
+      walletLogoApplied,
+      walletPending: !passUrl,
     });
-  } catch (error) {
-    console.error(
-      "create-member failed",
-      error,
-    );
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    console.error("create-member failed", error);
 
-    return jsonError(
-      getErrorMessage(error),
-      500,
-    );
+    if (message === "INVALID_REFERRAL") {
+      return jsonError("That referral code is not valid. Check the code or leave the field blank.", 400);
+    }
+
+    if (message === "REFERRAL_CODE_COLLISION" || message === "COULD_NOT_CREATE_REFERRAL_CODE") {
+      return jsonError("We could not create your referral code. Please try again.", 503);
+    }
+
+    return jsonError("We couldn't create your GULA Rewards account. Please try again.", 500);
   }
 }
