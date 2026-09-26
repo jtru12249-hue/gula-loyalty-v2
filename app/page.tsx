@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import QrScanner from "@/components/qr-scanner";
 
 type Member = {
@@ -29,6 +29,8 @@ type ActionResponse = {
 
 export default function StaffTerminalPage() {
   const [staffPin, setStaffPin] = useState("");
+  const [staffAuthenticated, setStaffAuthenticated] = useState(false);
+  const [authWorking, setAuthWorking] = useState(false);
   const [spendAmount, setSpendAmount] = useState("");
   const [member, setMember] = useState<Member | null>(null);
   const [loadingMember, setLoadingMember] = useState(false);
@@ -53,13 +55,50 @@ export default function StaffTerminalPage() {
     ? Math.min(100, (member.points / 1000) * 100)
     : 0;
 
-  async function loadMember(memberId: string) {
-    if (!staffPin.trim()) {
-      setStatus({
-        type: "error",
-        text: "Enter the staff PIN before scanning.",
-      });
+  useEffect(() => {
+    void fetch("/api/staff-session", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => setStaffAuthenticated(Boolean(data?.authenticated)))
+      .catch(() => setStaffAuthenticated(false));
+  }, []);
 
+  async function signInStaff() {
+    if (!staffPin.trim()) {
+      setStatus({ type: "error", text: "Enter the staff PIN." });
+      return;
+    }
+
+    setAuthWorking(true);
+    try {
+      const res = await fetch("/api/staff-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: staffPin }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Unable to sign in.");
+      setStaffAuthenticated(true);
+      setStaffPin("");
+      setStatus({ type: "success", text: "Staff terminal unlocked for this device." });
+    } catch (error) {
+      setStaffAuthenticated(false);
+      setStatus({ type: "error", text: error instanceof Error ? error.message : "Unable to sign in." });
+    } finally {
+      setAuthWorking(false);
+    }
+  }
+
+  async function signOutStaff() {
+    await fetch("/api/staff-session", { method: "DELETE" }).catch(() => undefined);
+    setStaffAuthenticated(false);
+    setMember(null);
+    setSpendAmount("");
+    setStatus({ type: "idle", text: "Staff terminal locked." });
+  }
+
+  async function loadMember(memberId: string) {
+    if (!staffAuthenticated) {
+      setStatus({ type: "error", text: "Unlock the staff terminal before scanning." });
       return;
     }
 
@@ -76,7 +115,6 @@ export default function StaffTerminalPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-staff-pin": staffPin,
         },
         body: JSON.stringify({
           memberId,
@@ -109,7 +147,7 @@ export default function StaffTerminalPage() {
   }
 
   async function addPoints() {
-    if (!member) {
+    if (!member || !staffAuthenticated) {
       return;
     }
 
@@ -134,7 +172,6 @@ export default function StaffTerminalPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-staff-pin": staffPin,
         },
         body: JSON.stringify({
           memberId: member.memberId,
@@ -186,7 +223,7 @@ export default function StaffTerminalPage() {
   }
 
   async function redeemReward() {
-    if (!member || member.points < 1000) {
+    if (!member || !staffAuthenticated || member.points < 1000) {
       return;
     }
 
@@ -212,7 +249,6 @@ export default function StaffTerminalPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-staff-pin": staffPin,
         },
         body: JSON.stringify({
           memberId: member.memberId,
@@ -362,21 +398,45 @@ export default function StaffTerminalPage() {
                 </div>
               </label>
 
-              <label className="block">
+              <div className="rounded-2xl border border-white/10 bg-neutral-900 p-4">
                 <span className="mb-2 block text-sm font-bold text-neutral-300">
-                  Staff PIN
+                  Staff Access
                 </span>
 
-                <input
-                  type="password"
-                  value={staffPin}
-                  onChange={(event) =>
-                    setStaffPin(event.target.value)
-                  }
-                  placeholder="Enter staff PIN"
-                  className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 font-bold outline-none focus:border-red-500"
-                />
-              </label>
+                {staffAuthenticated ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-bold text-emerald-400">Terminal unlocked</span>
+                    <button type="button" onClick={signOutStaff} className="rounded-xl border border-white/10 px-3 py-2 text-sm font-bold hover:bg-white/5">
+                      Lock
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <input
+                      type="password"
+                      value={staffPin}
+                      onChange={(event) => setStaffPin(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void signInStaff();
+                        }
+                      }}
+                      placeholder="Enter staff PIN"
+                      autoComplete="current-password"
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 font-bold outline-none focus:border-red-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={signInStaff}
+                      disabled={authWorking}
+                      className="w-full rounded-xl bg-white px-4 py-3 font-black text-black disabled:opacity-50"
+                    >
+                      {authWorking ? "Unlocking..." : "Unlock Terminal"}
+                    </button>
+                  </div>
+                )}
+              </div>
             </form>
 
             <div className="mt-6 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-5">
@@ -413,7 +473,7 @@ export default function StaffTerminalPage() {
             </p>
 
             <QrScanner
-              disabled={working || loadingMember}
+              disabled={working || loadingMember || !staffAuthenticated}
               onScan={loadMember}
             />
 
