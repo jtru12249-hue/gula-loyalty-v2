@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getErrorMessage, jsonError } from "@/lib/http";
 import { isAuthorizedStaff } from "@/lib/staff-auth";
-import { normalizeMemberId } from "@/lib/validation";
+import { REWARD_COST, safePoints } from "@/lib/rewards";
+import { requireValidMemberId } from "@/lib/validation";
 
 import {
   createWalletPass,
@@ -13,7 +14,6 @@ import {
 
 export const runtime = "nodejs";
 
-const REWARD_COST = 1000;
 
 type RedemptionResult = {
   duplicate: boolean;
@@ -35,9 +35,12 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const memberId = normalizeMemberId(
-      body?.memberId,
-    );
+    let memberId: string;
+    try {
+      memberId = requireValidMemberId(body?.memberId);
+    } catch {
+      return jsonError("Invalid GULA Rewards QR code.");
+    }
 
     const idempotencyKey =
       typeof body?.idempotencyKey === "string"
@@ -45,12 +48,6 @@ export async function POST(req: Request) {
             .trim()
             .slice(0, 120)
         : "";
-
-    if (!memberId) {
-      return jsonError(
-        "Invalid member QR code.",
-      );
-    }
 
     if (!idempotencyKey) {
       return jsonError(
@@ -86,10 +83,7 @@ export async function POST(req: Request) {
           const member =
             memberSnap.data() ?? {};
 
-          const currentPoints = Math.max(
-            0,
-            Number(member.points ?? 0),
-          );
+          const currentPoints = safePoints(member.points);
 
           const name =
             typeof member.name ===
@@ -234,7 +228,7 @@ export async function POST(req: Request) {
         newPoints:
           result.newPoints,
 
-        walletSynced: true,
+        walletSynced: false,
       });
     }
 
