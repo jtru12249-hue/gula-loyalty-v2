@@ -4,8 +4,9 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getErrorMessage, jsonError } from "@/lib/http";
 import { isAuthorizedStaff } from "@/lib/staff-auth";
+import { safePoints } from "@/lib/rewards";
 import {
-  normalizeMemberId,
+  requireValidMemberId,
   parseSpendAmount,
 } from "@/lib/validation";
 import {
@@ -36,8 +37,13 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const memberId =
-      normalizeMemberId(body?.memberId);
+    let memberId: string;
+
+    try {
+      memberId = requireValidMemberId(body?.memberId);
+    } catch {
+      return jsonError("Invalid GULA Rewards QR code.", 400);
+    }
 
     const idempotencyKey =
       typeof body?.idempotencyKey === "string"
@@ -45,12 +51,6 @@ export async function POST(req: Request) {
             .trim()
             .slice(0, 120)
         : "";
-
-    if (!memberId) {
-      return jsonError(
-        "Invalid member QR code.",
-      );
-    }
 
     if (!idempotencyKey) {
       return jsonError(
@@ -97,9 +97,7 @@ export async function POST(req: Request) {
             memberSnap.data() ?? {};
 
           const currentPoints =
-            Number(
-              member.points ?? 0,
-            );
+            safePoints(member.points);
 
           const name =
             typeof member.name === "string"
