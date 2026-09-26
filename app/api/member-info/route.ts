@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { getErrorMessage, jsonError } from "@/lib/http";
 import { isAuthorizedStaff } from "@/lib/staff-auth";
-import { normalizeMemberId } from "@/lib/validation";
+import { REWARD_COST, safePoints } from "@/lib/rewards";
+import { requireValidMemberId } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -18,12 +19,11 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const memberId = normalizeMemberId(
-      body?.memberId,
-    );
-
-    if (!memberId) {
-      return jsonError("Invalid member QR code.");
+    let memberId: string;
+    try {
+      memberId = requireValidMemberId(body?.memberId);
+    } catch {
+      return jsonError("Invalid GULA Rewards QR code.");
     }
 
     const memberSnap = await adminDb
@@ -37,10 +37,7 @@ export async function POST(req: Request) {
 
     const member = memberSnap.data() ?? {};
 
-    const points = Math.max(
-      0,
-      Number(member.points ?? 0),
-    );
+    const points = safePoints(member.points);
 
     const name =
       typeof member.name === "string" &&
@@ -56,11 +53,11 @@ export async function POST(req: Request) {
         name,
         points,
 
-        rewardEligible: points >= 1000,
+        rewardEligible: points >= REWARD_COST,
 
         pointsToReward: Math.max(
           0,
-          1000 - points,
+          REWARD_COST - points,
         ),
       },
     });
