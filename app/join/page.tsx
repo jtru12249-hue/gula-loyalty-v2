@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 type Language = "en" | "es";
 
@@ -8,7 +8,8 @@ type JoinResponse = {
   success?: boolean;
   error?: string;
   memberId?: string;
-  passUrl?: string;
+  passUrl?: string | null;
+  walletPending?: boolean;
 
   existingMember?: boolean;
   name?: string;
@@ -99,6 +100,9 @@ const translations = {
     copyCode: "Copy Code",
 
     copied: "Copied!",
+    shareInvite: "Share Invite Link",
+    copyInvite: "Copy Invite Link",
+    walletPending: "Your membership is saved. Your Wallet pass is being prepared. Please try opening it again later.",
 
     another: "Use Another Email",
 
@@ -186,6 +190,9 @@ const translations = {
     copyCode: "Copiar Código",
 
     copied: "¡Copiado!",
+    shareInvite: "Compartir invitación",
+    copyInvite: "Copiar enlace de invitación",
+    walletPending: "Tu membresía está guardada. Estamos preparando tu pase Wallet. Intenta abrirlo más tarde.",
 
     another: "Usar Otro Correo",
 
@@ -210,6 +217,44 @@ export default function JoinPage() {
   const [copied, setCopied] = useState(false);
 
   const t = translations[language];
+
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref && /^GULA-[A-F0-9]{8,16}$/i.test(ref.trim())) {
+      setReferralCode(ref.trim().toUpperCase());
+    }
+  }, []);
+
+  function inviteLink(code: string) {
+    return `${window.location.origin}/join?ref=${encodeURIComponent(code)}`;
+  }
+
+  async function shareInvite() {
+    if (!result?.referralCode) return;
+    const url = inviteLink(result.referralCode);
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "GULA Rewards",
+          text: language === "es"
+            ? "¡Únete a GULA Rewards con mi código y recibe 300 puntos!"
+            : "Join GULA Rewards with my code and get 300 points!",
+          url,
+        });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+      } catch {
+        setError(t.genericError);
+      }
+    }
+  }
 
   function toggleLanguage() {
     setLanguage((current) =>
@@ -250,8 +295,7 @@ export default function JoinPage() {
 
       if (
         !res.ok ||
-        !data.success ||
-        !data.passUrl
+        !data.success
       ) {
         throw new Error(
           data.error || t.genericError,
@@ -555,14 +599,14 @@ export default function JoinPage() {
                     </div>
                   ) : null}
 
-                  <a
+                  {result.passUrl ? <a
                     href={result.passUrl}
                     className="mt-5 block w-full rounded-2xl bg-red-600 px-5 py-4 text-center font-black text-white shadow-lg shadow-red-950/40 transition hover:-translate-y-0.5 hover:bg-red-500"
                   >
                     {result.existingMember
                       ? t.existingWallet
                       : t.addWallet}
-                  </a>
+                  </a> : <p className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">{t.walletPending}</p>}
 
                   {/* POINT BALANCE */}
                   <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -604,6 +648,12 @@ export default function JoinPage() {
                           ? t.copied
                           : t.copyCode}
                       </button>
+                      <button type="button" onClick={() => void shareInvite()} className="mt-3 w-full rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white hover:bg-red-500">
+                        {t.shareInvite}
+                      </button>
+                      <p className="mt-3 break-all text-xs text-neutral-400">
+                        {typeof window !== "undefined" ? inviteLink(result.referralCode) : ""}
+                      </p>
                     </div>
                   ) : null}
 
