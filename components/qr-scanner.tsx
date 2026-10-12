@@ -1,150 +1,131 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 type Props = {
   disabled?: boolean;
   onScan: (memberId: string) => void | Promise<void>;
 };
 
-function cleanDecodedValue(value: string) {
-  return value.trim().replace(/^gula:\/\/member\//i, "").slice(0, 200);
+function decodeMemberId(raw: string) {
+  const value = raw.trim().replace(/^gula:\/\/member\//i, "");
+  return /^[A-Za-z0-9_-]{1,128}$/.test(value) ? value : null;
 }
 
 export default function QrScanner({ disabled = false, onScan }: Props) {
+  const reactId = useId();
+  const elementId = `gula-reader-${reactId.replace(/:/g, "")}`;
   const scannerRef = useRef<import("html5-qrcode").Html5Qrcode | null>(null);
-  const cameraActiveRef = useRef(false);
-  const processingRef = useRef(false);
+  const runningRef = useRef(false);
+  const busyRef = useRef(false);
+  const mountedRef = useRef(true);
+  const [running, setRunning] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("Scan a member pass or upload its QR screenshot.");
 
-  const [cameraActive, setCameraActive] = useState(false);
-  const [message, setMessage] = useState(
-    "Start the camera or upload a screenshot of the member pass.",
-  );
-
-  async function getScanner() {
+  async function scanner() {
     if (scannerRef.current) return scannerRef.current;
-
-    const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import(
-      "html5-qrcode"
-    );
-
-    scannerRef.current = new Html5Qrcode("gula-qr-reader", {
+    const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import("html5-qrcode");
+    const instance = new Html5Qrcode(elementId, {
       formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
       verbose: false,
     });
-
-    return scannerRef.current;
+    scannerRef.current = instance;
+    return instance;
   }
 
-  async function stopCamera() {
-    const scanner = scannerRef.current;
-
-    if (scanner && cameraActiveRef.current) {
-      try {
-        await scanner.stop();
-      } catch {
-        // Camera may already have stopped.
-      }
+  async function stop() {
+    if (scannerRef.current && runningRef.current) {
+      runningRef.current = false;
+      try { await scannerRef.current.stop(); } catch { /* already stopped */ }
     }
-
-    cameraActiveRef.current = false;
-    setCameraActive(false);
+    if (mountedRef.current) setRunning(false);
   }
 
-  async function handleDecoded(decodedText: string) {
-    if (processingRef.current || disabled) return;
+  async function decoded(raw: string) {
+    if (busyRef.current || disabled) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      await stop();
+      const id = decodeMemberId(raw);
+      if (!id) {
+        setMessage("This is not a valid GULA member QR code.");
+        return;
+      }
+      setMessage("QR scanned. Looking up member…");
+      await onScan(id);
+      setMessage("Scan complete. You can scan another member.");
+    } catch {
+      setMessage("Could not look up this member. Please try again.");
+    } finally {
+      busyRef.current = false;
+      if (mountedRef.current) setBusy(false);
+    }
+  }
 
-    const memberId = cleanDecodedValue(decodedText);
-    if (!memberId) {
-      setMessage("That QR code is empty or invalid.");
+  async function start() {
+    if (disabled || busyRef.current || runningRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      setMessage("Requesting camera permission…");
+      const s = await scanner();
+      await s.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: (w, h) => {
+          const size = Math.max(100, Math.floor(Math.min(w, h) * 0.7));
+          return { width: size, height: size };
+        } },
+        (value) => { void decoded(value); },
+        () => undefined,
+      );
+      runningRef.current = true;
+      if (mountedRef.current) {
+        setRunning(true);
+        setMessage("Point the camera at the member QR code.");
+      }
+    } catch {
+      setMessage("Camera unavailable. Allow camera access on HTTPS or upload a screenshot.");
+    } finally {
+      busyRef.current = false;
+      if (mountedRef.current) setBusy(false);
+    }
+  }
+
+  async function scanImage(file: File) {
+    if (disabled || busyRef.current) return;
+    if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
+      setMessage("Choose an image smaller than 10 MB.");
       return;
     }
-
-    processingRef.current = true;
-    await stopCamera();
-    setMessage("QR code read successfully.");
-
+    busyRef.current = true;
+    setBusy(true);
     try {
-      await onScan(memberId);
+      await stop();
+      const s = await scanner();
+      const value = await s.scanFile(file, true);
+      busyRef.current = false;
+      await decoded(value);
+    } catch {
+      setMessage("No QR code found. Try a clear image showing the full QR.");
     } finally {
-      processingRef.current = false;
-    }
-  }
-
-  async function startCamera() {
-    if (disabled) return;
-
-    try {
-      setMessage("Requesting camera access…");
-      await stopCamera();
-
-      const scanner = await getScanner();
-
-      await scanner.start(
-        { facingMode: "environment" },
-        {
-          fps: 12,
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const size = Math.floor(
-              Math.min(viewfinderWidth, viewfinderHeight) * 0.72,
-            );
-            return { width: size, height: size };
-          },
-          aspectRatio: 1,
-        },
-        (decodedText) => {
-          void handleDecoded(decodedText);
-        },
-        () => {
-          // Normal frame misses are intentionally ignored.
-        },
-      );
-
-      cameraActiveRef.current = true;
-      setCameraActive(true);
-      setMessage("Point the camera at the member QR code.");
-    } catch (error) {
-      console.error(error);
-      cameraActiveRef.current = false;
-      setCameraActive(false);
-      setMessage(
-        "Camera could not start. Check browser permission, use HTTPS, or upload a screenshot instead.",
-      );
-    }
-  }
-
-  async function scanFile(file: File) {
-    if (disabled) return;
-
-    try {
-      setMessage("Reading QR code from image…");
-      await stopCamera();
-
-      const scanner = await getScanner();
-      const decodedText = await scanner.scanFile(file, true);
-      await handleDecoded(decodedText);
-    } catch (error) {
-      console.error(error);
-      setMessage(
-        "No QR code was found in that image. Try a sharper screenshot with the full QR visible.",
-      );
+      busyRef.current = false;
+      if (mountedRef.current) setBusy(false);
     }
   }
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      const scanner = scannerRef.current;
-      if (!scanner) return;
-
-      if (cameraActiveRef.current) {
-        void scanner
-          .stop()
-          .catch(() => undefined)
-          .finally(() => {
-            scanner.clear();
-          });
-      } else {
-        scanner.clear();
+      mountedRef.current = false;
+      const s = scannerRef.current;
+      if (s) {
+        if (runningRef.current) {
+          void s.stop().catch(() => undefined).finally(() => { try { s.clear(); } catch {} });
+        } else {
+          try { s.clear(); } catch {}
+        }
       }
     };
   }, []);
@@ -152,37 +133,20 @@ export default function QrScanner({ disabled = false, onScan }: Props) {
   return (
     <div className="space-y-4">
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-black">
-        <div
-          id="gula-qr-reader"
-          className="min-h-64 w-full [&_video]:rounded-2xl"
-        />
+        <div id={elementId} className="min-h-64 w-full [&_video]:rounded-2xl" />
       </div>
-
-      <p className="min-h-6 text-sm text-neutral-400">{message}</p>
-
+      <p role="status" aria-live="polite" className="min-h-6 text-sm text-neutral-400">{message}</p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={cameraActive ? stopCamera : startCamera}
-          disabled={disabled}
-          className="rounded-2xl bg-red-600 px-5 py-3.5 font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {cameraActive ? "Stop Camera" : "Scan with Camera"}
+        <button type="button" disabled={disabled || busy} onClick={() => { void (running ? stop() : start()); }} className="rounded-2xl bg-red-600 px-5 py-3.5 font-semibold text-white hover:bg-red-500 disabled:opacity-50">
+          {running ? "Stop Camera" : "Scan with Camera"}
         </button>
-
-        <label className="cursor-pointer rounded-2xl border border-white/15 bg-neutral-900 px-5 py-3.5 text-center font-semibold text-white transition hover:bg-neutral-800">
+        <label className={`rounded-2xl border border-white/15 bg-neutral-900 px-5 py-3.5 text-center font-semibold text-white ${disabled || busy ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-neutral-800"}`}>
           Upload Screenshot
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            disabled={disabled}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.currentTarget.value = "";
-              if (file) void scanFile(file);
-            }}
-          />
+          <input type="file" accept="image/*" className="hidden" disabled={disabled || busy} onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            if (file) void scanImage(file);
+          }} />
         </label>
       </div>
     </div>
